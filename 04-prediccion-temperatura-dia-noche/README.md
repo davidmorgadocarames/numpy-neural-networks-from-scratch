@@ -1,0 +1,68 @@
+# 04 — Predicción de temperatura día/noche
+
+Una red densa mira las últimas 3 horas de temperatura y predice la hora siguiente — la técnica
+de "ventana deslizante" para convertir una serie temporal en un problema de regresión
+supervisado.
+
+Es un problema de **regresión** sobre el futuro, así que no aplica una matriz de confusión. El
+split respeta el orden temporal en sus tres partes — **train** (60%) / **validación** (20%,
+decide el early stopping) / **test** (20%, se evalúa una sola vez, al final) — siempre en ese
+orden cronológico: mezclar aleatoriamente aquí sería trampa, la red podría interpolar en vez
+de predecir el futuro real. Ver "Metodología" en el [README raíz](../README.md) para el
+porqué de separar validación de test.
+
+> Este proyecto se llamaba antes "secuencias temporales" — el nombre no decía qué predice
+> realmente. Además, la primera versión generaba una onda `sin(t)` genérica (valores entre -1
+> y 1 sin unidad física) y la etiquetaba como "temperatura" solo en el texto; ahora los datos
+> son realmente temperatura en grados Celsius, con un ciclo día/noche físicamente coherente
+> (mínimo de madrugada, máximo a mediodía) y ruido en las mismas unidades.
+
+## Los datos: temperatura horaria sintética
+
+- 8 días de lecturas horarias (24 puntos/día, 192 en total).
+- Ciclo día/noche: `18°C - 7°C·cos(2π·día)` — mínimo ~11°C a medianoche, máximo ~25°C a
+  mediodía — más ruido gaussiano de desviación 0.7°C para que no sea una curva perfecta.
+- `VENTANA = 3`: la red mira las últimas **3 horas** para predecir la temperatura de **la hora
+  siguiente**. No mira días completos ni predice días — cada paso hacia el futuro en los
+  gráficos de abajo es 1 hora.
+
+![Serie temporal](results/data_visualization.png)
+
+## Resultado
+
+Con early stopping activado (ver README de
+[`05-precio-casas`](../05-precio-casas/) para la explicación general del criterio, es el mismo
+aquí), entrenado sobre 113 horas, validado sobre 38 y evaluado sobre 38 horas de test (las
+últimas cronológicamente, nunca vistas ni usadas para decidir nada):
+
+- **Época de parada: 693** de 3000 configuradas — el error de **validación** dejó de mejorar
+  de forma significativa a partir de ahí.
+- **MAE en test: 0.90 °C** — próximo al ruido de fondo (0.7 °C de desviación), indicando que
+  la red aprendió el patrón cíclico real y no solo está memorizando.
+
+![Curva de aprendizaje](results/learning_curve.png)
+
+**Predicción vs realidad en test**: eje X en horas reales desde el inicio del test (no un
+índice sin unidades) y eje Y en grados Celsius reales (no un valor normalizado entre -1 y 1
+sin significado, como en la versión anterior de este proyecto). La predicción seguía de cerca
+el ciclo día/noche real, incluyendo el pico y el valle que nunca vio durante el entrenamiento:
+
+![Predicción vs realidad](results/predicted_vs_real.png)
+
+## Reproducir
+
+```bash
+pip install -r ../requirements.txt
+python temperatura_dia_noche.py
+```
+
+## Limitaciones
+
+- Datos sintéticos (ciclo coseno + ruido gaussiano), no temperaturas reales medidas.
+- El eje Y de la curva de aprendizaje (`learning_curve.png`) sigue en la escala normalizada
+  0-1 en la que entrena la red, no en °C directamente — es el error cuadrático medio sobre los
+  datos ya escalados a [0,1], útil para comparar train vs validación, pero no se puede leer
+  como grados. El MAE en °C reportado arriba sí está desnormalizado a la escala real.
+- Con un split de tres partes sobre solo 189 horas totales, validación y test quedan en 38
+  horas cada uno — suficiente para ilustrar el mecanismo, pero con más varianza que un
+  dataset más grande.

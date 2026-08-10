@@ -1,0 +1,15 @@
+{
+  "epochs_configuradas": 5000,
+  "epochs_entrenadas": 5000,
+  "n_train": 18,
+  "n_val": 6,
+  "n_test": 6,
+  "W_aprendido": 1.800060190164513,
+  "b_aprendido": 31.99630202773521,
+  "W_real": 1.8,
+  "b_real": 32.0,
+  "mse_train_final": 1.2433444196210238e-05,
+  "mse_val_final": 1.2186182521819551e-05,
+  "mse_test_final": 1.0759788680318724e-05,
+  "mae_test_grados_F": 0.003204312074522283
+}

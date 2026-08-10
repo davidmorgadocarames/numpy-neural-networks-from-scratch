@@ -1,0 +1,49 @@
+{
+  "epochs": 1000,
+  "loss_final": 0.0021163536890672742,
+  "aciertos": "4/4",
+  "predicciones": [
+    {
+      "entrada": [
+        0,
+        0
+      ],
+      "objetivo": 0,
+      "prediccion": 0.040476876438578495
+    },
+    {
+      "entrada": [
+        0,
+        1
+      ],
+      "objetivo": 1,
+      "prediccion": 0.9401480104313047
+    },
+    {
+      "entrada": [
+        1,
+        0
+      ],
+      "objetivo": 1,
+      "prediccion": 0.9648373895045765
+    },
+    {
+      "entrada": [
+        1,
+        1
+      ],
+      "objetivo": 0,
+      "prediccion": 0.04475278467641257
+    }
+  ],
+  "matriz_confusion": [
+    [
+      2,
+      0
+    ],
+    [
+      0,
+      2
+    ]
+  ]
+}

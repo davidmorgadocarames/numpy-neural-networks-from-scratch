@@ -1,0 +1,10 @@
+# Normaliza los finales de línea de los archivos de texto a LF dentro del repo,
+# independientemente del core.autocrlf de quien commitee (evita ruido en diffs entre
+# colaboradores en Windows/Linux/Mac). Al hacer checkout, git sigue usando el final de línea
+# nativo de cada sistema operativo.
+* text=auto eol=lf
+
+# Binarios explícitos: nunca tocar sus bytes buscando finales de línea.
+*.png binary
+*.gif binary
+*.npz binary

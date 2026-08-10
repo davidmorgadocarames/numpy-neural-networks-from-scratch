@@ -1,0 +1,183 @@
+"""
+Predicción del precio de una casa (NumPy puro) a partir de 2 variables: metros cuadrados y
+número de habitaciones. Red modular (Densa -> LeakyReLU -> Densa lineal) entrenada con un
+split train/validación/test para poder detectar overfitting y decidir cuándo parar sin tocar
+el conjunto de test: el early stopping compara el error en train contra el de VALIDACIÓN
+época a época -- si el error de validación empezara a subir mientras el de train sigue
+bajando, sería la señal clásica de que la red está memorizando en vez de generalizar. El test
+se evalúa una única vez, al final, con la red ya congelada.
+
+Es un problema de REGRESIÓN (predice un precio en euros, no una categoría), así que no aplica
+una matriz de confusión -- el equivalente honesto es el mapa de precios aprendido y el error
+en euros sobre casas de test nunca vistas en el entrenamiento.
+
+Uso: python house_price.py
+"""
+
+import json
+import sys
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from capas import ActivacionLeakyReLU, CapaDensa, predecir
+
+SEED = 42
+RESULTS_DIR = Path(__file__).parent / "results"
+RESULTS_DIR.mkdir(exist_ok=True)
+
+# Early stopping: para el entrenamiento en cuanto el error de VALIDACIÓN deja de mejorar de
+# verdad (ver README para más detalle de por qué se usa una ventana en vez de comparar época a
+# época).
+PACIENCIA_EARLY_STOP = 200
+MEJORA_MINIMA_RELATIVA = 0.005
+
+
+def main() -> None:
+    np.random.seed(SEED)
+
+    metros_cuadrados = np.random.uniform(40, 240, (150, 1))
+    habitaciones = np.random.randint(1, 6, (150, 1)).astype(float)
+    X_puro = np.hstack([metros_cuadrados, habitaciones])
+
+    precio_base = metros_cuadrados * 1500 + habitaciones * 25000 + 50000
+    ruido = np.random.normal(0, 15000, (150, 1))
+    Y_puro = precio_base + ruido
+
+    X_min, X_max = np.min(X_puro, axis=0), np.max(X_puro, axis=0)
+    X_norm = (X_puro - X_min) / (X_max - X_min)
+    Y_min, Y_max = np.min(Y_puro), np.max(Y_puro)
+    Y_norm = (Y_puro - Y_min) / (Y_max - Y_min)
+
+    # 90 train (60%) / 30 validación (20%, decide el early stopping) / 30 test (20%, se toca
+    # una sola vez, al final).
+    indices = np.arange(150)
+    np.random.shuffle(indices)
+    n_train, n_val = 90, 30
+    idx_train, idx_val, idx_test = indices[:n_train], indices[n_train:n_train + n_val], indices[n_train + n_val:]
+    X_train, X_val, X_test = X_norm[idx_train], X_norm[idx_val], X_norm[idx_test]
+    Y_train, Y_val, Y_test = Y_norm[idx_train], Y_norm[idx_val], Y_norm[idx_test]
+
+    red = [
+        CapaDensa(dim_entrada=2, dim_salida=16, semilla_he=False),
+        ActivacionLeakyReLU(),
+        CapaDensa(dim_entrada=16, dim_salida=1, semilla_he=False),
+    ]
+
+    learning_rate = 0.05
+    epochs = 4000
+    historial_loss_train, historial_loss_val = [], []
+
+    for epoch in range(epochs):
+        activacion = X_train
+        for capa in red:
+            activacion = capa.forward(activacion)
+        A2_train = activacion
+
+        loss_train = np.mean((A2_train - Y_train) ** 2)
+        historial_loss_train.append(loss_train)
+
+        A2_val = predecir(red, X_val)
+        loss_val = np.mean((A2_val - Y_val) ** 2)
+        historial_loss_val.append(loss_val)
+
+        gradiente = 2 * (A2_train - Y_train) / Y_train.shape[0]
+        for capa in reversed(red):
+            gradiente = capa.backward(gradiente, learning_rate)
+
+        if epoch >= PACIENCIA_EARLY_STOP:
+            loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
+            mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
+            if mejora_relativa < MEJORA_MINIMA_RELATIVA:
+                print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
+                      f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
+                break
+    else:
+        print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
+
+    epocas_entrenadas = len(historial_loss_train)
+
+    # === Única vez que se toca el conjunto de test, ya con la red entrenada ===
+    A2_test = predecir(red, X_test)
+    loss_test = float(np.mean((A2_test - Y_test) ** 2))
+    precio_pred_test = A2_test * (Y_max - Y_min) + Y_min
+    precio_real_test = Y_test * (Y_max - Y_min) + Y_min
+    mae_euros = float(np.mean(np.abs(precio_pred_test - precio_real_test)))
+
+    metrics = {
+        "epochs_configuradas": epochs,
+        "epochs_entrenadas": epocas_entrenadas,
+        "loss_train_final": float(historial_loss_train[-1]),
+        "loss_val_final": float(historial_loss_val[-1]),
+        "loss_test_final": loss_test,
+        "mae_test_euros": mae_euros,
+        "n_train": int(len(X_train)),
+        "n_val": int(len(X_val)),
+        "n_test": int(len(X_test)),
+    }
+    (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    print(f"MAE en test: {mae_euros:.2f} EUR")
+
+    # === Gráfico 1: curva de aprendizaje (train + validación, en euros desnormalizados) ===
+    error_euros_train = np.sqrt(historial_loss_train) * (Y_max - Y_min)
+    error_euros_val = np.sqrt(historial_loss_val) * (Y_max - Y_min)
+    plt.figure(figsize=(6, 4))
+    plt.plot(error_euros_train, color="blue", label="Error entrenamiento (Train)")
+    plt.plot(error_euros_val, color="orange", linestyle="--", label="Error generalización (Validación)")
+    plt.title("Curva de aprendizaje: detección de overfitting", fontweight="bold")
+    plt.xlabel("Épocas")
+    plt.ylabel("Error promedio (EUR)")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "learning_curve.png", dpi=150)
+    plt.close()
+
+    # === Gráfico 2: visualización de datos = mapa de precios aprendido ===
+    xx, yy = np.meshgrid(np.arange(0, 1.02, 0.02), np.arange(0, 1.02, 0.02))
+    rejilla = np.c_[xx.ravel(), yy.ravel()]
+    precios_rejilla = (predecir(red, rejilla) * (Y_max - Y_min) + Y_min).reshape(xx.shape)
+
+    plt.figure(figsize=(6, 5))
+    fondo = plt.contourf(xx, yy, precios_rejilla, levels=20, alpha=0.8, cmap="coolwarm")
+    plt.colorbar(fondo, label="Precio estimado (EUR)")
+    plt.scatter(X_train[:, 0], X_train[:, 1], c=Y_train * (Y_max - Y_min) + Y_min,
+                cmap="coolwarm", edgecolors="black", marker="o", s=50, label="Train")
+    plt.scatter(X_val[:, 0], X_val[:, 1], c=Y_val * (Y_max - Y_min) + Y_min,
+                cmap="coolwarm", edgecolors="darkorange", marker="^", s=90, label="Validación")
+    plt.scatter(X_test[:, 0], X_test[:, 1], c=Y_test * (Y_max - Y_min) + Y_min,
+                cmap="coolwarm", edgecolors="yellow", marker="*", s=120, label="Test")
+    plt.title("Mapa de tasación aprendido por la red", fontweight="bold")
+    plt.xlabel("Metros cuadrados (normalizado)")
+    plt.ylabel("Número de habitaciones (normalizado)")
+    plt.legend(loc="upper left")
+    plt.grid(True, linestyle="--", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "data_visualization.png", dpi=150)
+    plt.close()
+
+    # === "Matriz": no aplica confusión (regresión). Predicho vs real en test. ===
+    plt.figure(figsize=(5, 5))
+    plt.scatter(precio_real_test, precio_pred_test, color="teal", edgecolors="k", s=80)
+    lims = [min(precio_real_test.min(), precio_pred_test.min()),
+            max(precio_real_test.max(), precio_pred_test.max())]
+    plt.plot(lims, lims, color="gray", linestyle="--", label="Predicción perfecta")
+    plt.title(f"Predicho vs real en test (MAE={mae_euros:.0f} EUR)", fontweight="bold")
+    plt.xlabel("Precio real (EUR)")
+    plt.ylabel("Precio predicho (EUR)")
+    plt.legend()
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(RESULTS_DIR / "predicted_vs_real.png", dpi=150)
+    plt.close()
+
+    print(f"Resultados guardados en {RESULTS_DIR}")
+
+
+if __name__ == "__main__":
+    main()

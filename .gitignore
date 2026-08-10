@@ -1,0 +1,10 @@
+# Entornos y artefactos de Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Jupyter / Gradio
+.ipynb_checkpoints/
+.gradio/

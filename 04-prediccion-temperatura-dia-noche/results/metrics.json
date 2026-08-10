@@ -1,0 +1,12 @@
+{
+  "epochs_configuradas": 3000,
+  "epochs_entrenadas": 693,
+  "ventana_horas": 3,
+  "loss_train_final": 0.004487297747176172,
+  "loss_val_final": 0.006309627707314927,
+  "loss_test_final": 0.004514834932386651,
+  "mae_test_celsius": 0.8990546815293184,
+  "n_train": 113,
+  "n_val": 38,
+  "n_test": 38
+}

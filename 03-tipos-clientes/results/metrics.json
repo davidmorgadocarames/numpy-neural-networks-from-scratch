@@ -1,0 +1,30 @@
+{
+  "epochs": 3000,
+  "loss_train_final": 0.2754794797849844,
+  "loss_test_final": 0.27919738987070236,
+  "accuracy_test": 1.0,
+  "n_train": 99,
+  "n_test": 21,
+  "matriz_confusion": [
+    [
+      7,
+      0,
+      0
+    ],
+    [
+      0,
+      7,
+      0
+    ],
+    [
+      0,
+      0,
+      7
+    ]
+  ],
+  "clases": [
+    "Navegadores",
+    "Ocasionales",
+    "VIPs"
+  ]
+}
