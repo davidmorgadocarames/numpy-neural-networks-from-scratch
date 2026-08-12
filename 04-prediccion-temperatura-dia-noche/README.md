@@ -35,9 +35,12 @@ Con early stopping activado (ver README de
 aquí), entrenado sobre 113 horas, validado sobre 38 y evaluado sobre 38 horas de test (las
 últimas cronológicamente, nunca vistas ni usadas para decidir nada):
 
-- **Época de parada: 693** de 3000 configuradas — el error de **validación** dejó de mejorar
-  de forma significativa a partir de ahí.
-- **MAE en test: 0.90 °C** — próximo al ruido de fondo (0.7 °C de desviación), indicando que
+- **Corte del early stopping: época 1811** de 3000 configuradas (techo de seguridad, no un
+  objetivo) — el error de **validación** llevaba 200 épocas sin mejorar un 0.5%. Los pesos
+  usados para evaluar son los de la **época 1804**, el mínimo real de `loss_val`, restaurado
+  por checkpoint (ver "Checkpoint del mejor punto de validación" en el
+  [README raíz](../README.md)).
+- **MAE en test: 0.88 °C** — próximo al ruido de fondo (0.7 °C de desviación), indicando que
   la red aprendió el patrón cíclico real y no solo está memorizando.
 
 ![Curva de aprendizaje](results/learning_curve.png)

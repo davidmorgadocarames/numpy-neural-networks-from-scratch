@@ -1,29 +1,34 @@
 """
-CNN (Conv2D + MaxPool + Dropout) sobre Fashion-MNIST, escrita 100% en NumPy -- sin
-TensorFlow, sin Keras, sin PyTorch, ni siquiera para la parte convolucional (ver
-`capas_cnn.py`, que implementa la convolución a mano con la técnica im2col). Es el proyecto
-más avanzado de este repo: los 7 anteriores usan solo capas densas, este añade convoluciones,
-pooling y dropout desde cero.
+Variante de `cnn_fashion_mnist.py` sobre Fashion-MNIST COMPLETO (70.000 imágenes, no la
+muestra reducida de 2.400/600/1.000), para poder comparar en el propio repositorio qué gana la
+CNN al entrenar con mucha más muestra. Se guarda como script aparte -- no sustituye al
+original -- para que ambos resultados (y ambas arquitecturas de entrenamiento) queden
+documentados uno junto al otro. Ver `../07-reconocimiento-digitos/digit_classifier_full.py`
+para la misma idea aplicada a la red densa de MNIST.
 
-La red se entrena **dos veces con la misma arquitectura y los mismos pesos iniciales**: una
-vez tal cual (*baseline*) y otra con data augmentation (flip horizontal + rotación + zoom +
-desplazamiento aleatorios, reimplementados a mano en `capas_cnn.augmentar_lote` -- ver ese
-módulo para el porqué de cada elección), para medir el efecto real de la técnica en vez de
-solo mencionarla.
+Con 2.400 imágenes, un batch "full" (toda la muestra de golpe, 1 actualización de pesos por
+época) era manejable. Con ~42.000 imágenes de train, seguir haciendo full-batch significaría 1
+sola actualización de pesos por época sobre una matriz enorme -- converge muy despacio en
+número de actualizaciones. La solución estándar es entrenar por MINI-BATCHES: en cada época, la
+muestra se recorre en trozos de `BATCH_SIZE` imágenes, con una actualización de pesos por trozo
+(~1.313 actualizaciones por época con batch_size=32) en vez de 1 sola.
 
-Split en tres partes -- train / validación / test -- estratificado por clase. El early
-stopping de AMBOS entrenamientos (baseline y augmented) decide cuándo parar mirando el loss de
-VALIDACIÓN, nunca el de test: el test se evalúa una única vez por versión, después de que el
-entrenamiento ya ha terminado, así que la comparación final baseline vs augmented es limpia
-por construcción -- no hace falta igualar manualmente ningún criterio de parada entre las dos
-versiones, cada una para cuando su propia validación deja de mejorar.
+Split estratificado por clase, pero usando el 60/20/20 de CADA clase sobre las 7.000 imágenes
+que tiene cada una de las 10 clases de Fashion-MNIST (a diferencia de MNIST, aquí sí está
+perfectamente equilibrado: exactamente 7.000 imágenes por clase, 70.000 en total).
 
-Se usa Fashion-MNIST en lugar de MNIST porque es lo bastante difícil como para justificar
-convoluciones (los dígitos de MNIST se resuelven casi igual de bien con una red densa) y no
-requiere descarga manual de datos (se descarga vía sklearn.fetch_openml, igual que MNIST en
-`07-reconocimiento-digitos`).
+Error clásico a evitar al pasar de full-batch a mini-batch: la normalización del gradiente de
+la capa de salida debe dividir por el tamaño del BATCH actual (`Yb.shape[0]`), no por el
+tamaño de todo el conjunto de train (`Y_train.shape[0]`). Si se deja el denominador del
+full-batch original, el gradiente queda a una escala equivocada en cada batch y el
+entrenamiento se vuelve absurdamente lento o inestable sin que salte ningún error explícito.
 
-Uso: python cnn_fashion_mnist.py
+La augmentation (ver `capas_cnn.augmentar_lote`) se sigue aplicando sobre el conjunto de train
+COMPLETO una vez por época, igual que en la versión original -- son operaciones vectorizadas de
+NumPy sobre el array entero, no un bucle por imagen, así que no hace falta aplicarla batch a
+batch; el resultado de esa época ya augmentada es lo que luego se recorre en mini-batches.
+
+Uso: python cnn_fashion_mnist_full.py
 """
 
 import json
@@ -43,26 +48,22 @@ from capas import ActivacionLeakyReLU, ActivacionSoftmax, CapaDensa
 from capas_cnn import CapaConv2D, CapaDropout, CapaFlatten, CapaMaxPool2D, augmentar_lote, predecir_cnn
 
 SEED = 42
-RESULTS_DIR = Path(__file__).parent / "results"
+RESULTS_DIR = Path(__file__).parent / "results_full"
 RESULTS_DIR.mkdir(exist_ok=True)
 
-# 240 train (60%) / 60 validación (20%, decide el early stopping) / 100 test (20%, se evalúa
-# una sola vez, después de entrenar) por cada una de las 10 clases.
-N_POR_CLASE_TRAIN = 240
-N_POR_CLASE_VAL = 60
-N_POR_CLASE_TEST = 100
+FRAC_TRAIN, FRAC_VAL = 0.6, 0.2  # el resto (0.2) es test
+BATCH_SIZE = 32
 NOMBRES_CLASES = [
     "Camiseta", "Pantalón", "Jersey", "Vestido", "Abrigo",
     "Sandalia", "Camisa", "Zapatilla", "Bolso", "Botín",
 ]
 
 LEARNING_RATE = 0.12
-EPOCHS_MAX = 400
-# Ventana de mejora relativa sobre el loss de VALIDACIÓN (ver README de 02-celsius-fahrenheit /
-# 05-precio-casas para la explicación general del criterio). Al decidir sobre validación en
-# vez de test, baseline y augmented pueden compararse sin ningún ajuste manual de por medio:
-# cada entrenamiento para cuando su propia validación dice que ya no mejora.
-PACIENCIA_EARLY_STOP = 150
+# Con ~1.313 actualizaciones de pesos por época (en vez de 1 en la versión full-batch), la red
+# converge en muchas menos épocas -- por eso el techo y la paciencia son mucho más bajos que en
+# cnn_fashion_mnist.py (EPOCHS_MAX=400, paciencia=150). Ver README para la comparación medida.
+EPOCHS_MAX = 25
+PACIENCIA_EARLY_STOP = 5
 MEJORA_MINIMA_RELATIVA = 0.005
 
 
@@ -71,19 +72,19 @@ def cargar_datos():
     datos = fetch_openml("Fashion-MNIST", version=1, as_frame=False, parser="liac-arff")
     X_puro, Y_puro = datos.data, datos.target.astype(int)
 
-    # Muestra estratificada (mismo patrón que 07-reconocimiento-digitos): mismo número de
-    # train/validación/test por clase para que la matriz de confusión no esté sesgada.
+    # Split estratificado 60/20/20 usando las 7.000 imágenes completas de cada clase (Fashion-
+    # MNIST está perfectamente equilibrado, a diferencia de MNIST).
     rng = np.random.default_rng(SEED)
     idx_train, idx_val, idx_test = [], [], []
     for clase in range(10):
         idx_clase = np.where(Y_puro == clase)[0]
         rng.shuffle(idx_clase)
-        fin_train = N_POR_CLASE_TRAIN
-        fin_val = N_POR_CLASE_TRAIN + N_POR_CLASE_VAL
-        fin_test = fin_val + N_POR_CLASE_TEST
-        idx_train.extend(idx_clase[:fin_train])
-        idx_val.extend(idx_clase[fin_train:fin_val])
-        idx_test.extend(idx_clase[fin_val:fin_test])
+        n_clase = len(idx_clase)
+        corte_train = int(n_clase * FRAC_TRAIN)
+        corte_val = corte_train + int(n_clase * FRAC_VAL)
+        idx_train.extend(idx_clase[:corte_train])
+        idx_val.extend(idx_clase[corte_train:corte_val])
+        idx_test.extend(idx_clase[corte_val:])
     idx_train, idx_val, idx_test = np.array(idx_train), np.array(idx_val), np.array(idx_test)
     rng.shuffle(idx_train)
     rng.shuffle(idx_val)
@@ -114,27 +115,34 @@ def crear_red():
     ]
 
 
-def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation, rng_aug, prob_flip=0.5):
-    """Bucle de entrenamiento full-batch (mismo estilo que el resto del repo), con early
-    stopping por ventana de mejora relativa sobre el loss de VALIDACIÓN (ver README de
-    02-celsius-fahrenheit / 05-precio-casas para la explicación general del criterio). El
-    conjunto de test no entra en esta función -- no se toca hasta después de entrenar.
+def generar_batches(X, Y, batch_size, rng):
+    """Recorre (X, Y) en mini-batches de tamaño `batch_size`, en un orden aleatorio distinto
+    cada vez que se llama. El último batch de la época puede ser más pequeño que `batch_size`
+    -- por eso el gradiente se normaliza por el tamaño real de CADA batch."""
+    n = X.shape[0]
+    indices = rng.permutation(n)
+    for inicio in range(0, n, batch_size):
+        idx_batch = indices[inicio : inicio + batch_size]
+        yield X[idx_batch], Y[idx_batch]
+
+
+def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation, rng_aug, rng_batches, prob_flip=0.5):
+    """Bucle de entrenamiento por MINI-BATCHES, con early stopping por ventana de mejora
+    relativa sobre el loss de VALIDACIÓN (ver README de 02-celsius-fahrenheit / 05-precio-casas
+    para la explicación general del criterio, y el docstring del módulo para el porqué del
+    mini-batch aquí). El conjunto de test no entra en esta función.
 
     `prob_flip` se pasa tal cual a `augmentar_lote()` -- permite aislar el efecto del flip
     horizontal del resto de la augmentation (rotación/zoom/desplazamiento) usando la misma
-    `rng_aug` con la misma semilla: como `augmentar_lote` siempre consume el mismo número de
-    valores aleatorios en el mismo orden (primero decide el flip, comparando contra el umbral,
-    luego rotación/zoom/desplazamiento), dos llamadas con distinto `prob_flip` pero la misma
-    semilla producen exactamente las mismas rotaciones/zooms/desplazamientos -- la única
-    diferencia real entre ambas es si se aplica el flip o no.
+    `rng_aug` con la misma semilla: `augmentar_lote` siempre consume el mismo número de valores
+    aleatorios en el mismo orden con independencia de `prob_flip`, así que dos llamadas con la
+    misma semilla producen exactamente las mismas rotaciones/zooms/desplazamientos -- la única
+    diferencia real es si se aplica el flip o no.
 
-    Checkpoint del mejor punto de validación: el early stopping corta ~PACIENCIA_EARLY_STOP
-    épocas DESPUÉS del mínimo real de loss_val, así que quedarse con los pesos de la época de
-    corte sería quedarse con pesos peores que los del mínimo. Se guarda una copia de los pesos
-    de cada capa con parámetros propios (CapaDensa y CapaConv2D, ambas con W/b) cada vez que
-    loss_val marca un nuevo mínimo, y se restauran sobre `red` (in-place) al salir del bucle.
-    Importante: .copy(), no una referencia -- si no, "restaurar" acabaría dejando los pesos
-    finales (los arrays se siguen modificando in-place en cada paso de gradiente)."""
+    Checkpoint del mejor punto de validación: igual que en el resto del repo, se guarda una
+    copia (.copy(), no una referencia) de los pesos de cada capa con parámetros propios
+    (CapaDensa y CapaConv2D) cada vez que loss_val marca un nuevo mínimo, y se restauran sobre
+    `red` (in-place) al salir del bucle."""
     Y_val_onehot = np.eye(10)[Y_val_num]
     historial_loss_train, historial_loss_val, historial_acc_val = [], [], []
     capas_con_pesos = [c for c in red if isinstance(c, (CapaDensa, CapaConv2D))]
@@ -146,11 +154,25 @@ def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation,
     for epoch in range(EPOCHS_MAX):
         X_epoca = augmentar_lote(X_train, rng_aug, prob_flip=prob_flip) if usar_augmentation else X_train
 
-        activacion = X_epoca
-        for capa in red:
-            activacion = capa.forward(activacion, entrenando=True)
-        probs_train = activacion
-        loss_train = -np.mean(np.sum(Y_train * np.log(probs_train + 1e-15), axis=1))
+        loss_train_acumulada = 0.0
+        n_vistas = 0
+        for Xb, Yb in generar_batches(X_epoca, Y_train, BATCH_SIZE, rng_batches):
+            activacion = Xb
+            for capa in red:
+                activacion = capa.forward(activacion, entrenando=True)
+            probs_train = activacion
+
+            loss_batch = -np.mean(np.sum(Yb * np.log(probs_train + 1e-15), axis=1))
+            loss_train_acumulada += loss_batch * Xb.shape[0]
+            n_vistas += Xb.shape[0]
+
+            # Normalizado por el tamaño del BATCH actual (Yb), no por el de todo train -- ver
+            # docstring del módulo para el error clásico que esto evita.
+            gradiente = (probs_train - Yb) / Yb.shape[0]
+            for capa in reversed(red[:-1]):
+                gradiente = capa.backward(gradiente, LEARNING_RATE)
+
+        loss_train = loss_train_acumulada / n_vistas
         historial_loss_train.append(loss_train)
 
         # Validación: SIEMPRE sobre imágenes originales, sin augmentation -- la augmentation es
@@ -166,13 +188,8 @@ def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation,
             mejor_epoca = epoch
             mejores_pesos = [(c.W.copy(), c.b.copy()) for c in capas_con_pesos]
 
-        gradiente = (probs_train - Y_train) / Y_train.shape[0]
-        for capa in reversed(red[:-1]):
-            gradiente = capa.backward(gradiente, LEARNING_RATE)
-
-        if epoch % 50 == 0:
-            print(f"  [{nombre}] época {epoch}: loss_train={loss_train:.4f} "
-                  f"loss_val={loss_val:.4f} acc_val={acc_val:.4f}")
+        print(f"  [{nombre}] época {epoch}: loss_train={loss_train:.4f} "
+              f"loss_val={loss_val:.4f} acc_val={acc_val:.4f} ({time.time() - t0:.0f}s)")
 
         if epoch >= PACIENCIA_EARLY_STOP:
             loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
@@ -230,8 +247,9 @@ def graficar_confusion(matriz, accuracy, titulo, ruta):
 
 def main() -> None:
     X_train, Y_train, Y_train_num, X_val, Y_val_num, X_test, Y_test_num = cargar_datos()
-    print(f"Entrenando con {len(X_train)} imágenes, validando con {len(X_val)}, "
-          f"evaluando sobre {len(X_test)} de test...")
+    n_batches_por_epoca = int(np.ceil(len(X_train) / BATCH_SIZE))
+    print(f"Entrenando con {len(X_train)} imágenes ({n_batches_por_epoca} batches/época de "
+          f"{BATCH_SIZE}), validando con {len(X_val)}, evaluando sobre {len(X_test)} de test...")
 
     # === Gráfico de datos: muestra del dataset + ejemplo de lo que hace la augmentation ===
     rng_demo = np.random.default_rng(SEED)
@@ -251,7 +269,7 @@ def main() -> None:
             axes[fila, col].set_yticks([])
         axes[fila, 0].set_ylabel(etiqueta, fontsize=9)
     plt.suptitle("Fila 1: una imagen por clase — Filas 2-3: la MISMA imagen (clase 0, "
-                 "Camiseta) tras 10 augmentations aleatorias distintas", fontweight="bold")
+                 "Camiseta) tras 10 augmentations aleatorias distintas (dataset completo)", fontweight="bold")
     plt.tight_layout()
     plt.savefig(RESULTS_DIR / "data_visualization.png", dpi=150)
     plt.close()
@@ -259,10 +277,9 @@ def main() -> None:
     # Tercera variante -- "augmented_sin_flip": misma augmentation que "augmented" (rotación,
     # zoom, desplazamiento) pero con prob_flip=0.0, para aislar si el flip horizontal ayuda o
     # perjudica en Fashion-MNIST. Tiene sentido dudarlo: a diferencia de dígitos manuscritos,
-    # varias prendas de Fashion-MNIST no son simétricas en la práctica (zapatillas, sandalias,
-    # botines tienen una orientación de puntera; algunas camisetas llevan estampados no
-    # simétricos) -- reflejarlas podría estar enseñando a la red una variación que no se
-    # corresponde con cómo aparecen las prendas reales.
+    # varias prendas no son simétricas en la práctica (zapatillas, sandalias, botines tienen
+    # una orientación de puntera) -- reflejarlas podría enseñar a la red una variación que no
+    # se corresponde con cómo aparecen las prendas reales.
     resultados = {}
     curvas = {}
     variantes = [
@@ -275,8 +292,9 @@ def main() -> None:
         np.random.seed(SEED)  # mismos pesos iniciales en las tres variantes
         red = crear_red()
         rng_aug = np.random.default_rng(SEED)
+        rng_batches = np.random.default_rng(SEED)
         hist_train, hist_val, hist_acc_val, mejor_epoca, mejor_loss_val = entrenar(
-            nombre, red, X_train, Y_train, X_val, Y_val_num, usar_aug, rng_aug, prob_flip=prob_flip
+            nombre, red, X_train, Y_train, X_val, Y_val_num, usar_aug, rng_aug, rng_batches, prob_flip=prob_flip
         )
         # evaluar() se llama con los pesos ya restaurados al mínimo de validación dentro de
         # entrenar() -- test sigue tocándose una única vez, con la red congelada.
@@ -301,6 +319,8 @@ def main() -> None:
         curvas[nombre] = hist_acc_val
 
     metrics = {
+        "batch_size": BATCH_SIZE,
+        "n_batches_por_epoca": n_batches_por_epoca,
         "epochs_max_configuradas": EPOCHS_MAX,
         "n_train": int(len(X_train)),
         "n_val": int(len(X_val)),
@@ -310,13 +330,12 @@ def main() -> None:
     }
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
-    # === Curva de aprendizaje comparativa: accuracy de VALIDACIÓN en las tres variantes (es lo
-    # que se registra época a época; el test es un único número final por versión) ===
+    # === Curva de aprendizaje comparativa: accuracy de VALIDACIÓN en las tres variantes ===
     plt.figure(figsize=(8, 4.5))
     plt.plot(curvas["baseline"], color="blue", label="Baseline (sin augmentation)")
     plt.plot(curvas["augmented"], color="green", linestyle="--", label="Augmented (flip=0.5)")
     plt.plot(curvas["augmented_sin_flip"], color="red", linestyle=":", label="Augmented sin flip (flip=0.0)")
-    plt.title("Accuracy en validación: baseline vs augmentation con/sin flip", fontweight="bold")
+    plt.title("Accuracy en validación: baseline vs augmentation con/sin flip (dataset completo)", fontweight="bold")
     plt.xlabel("Épocas")
     plt.ylabel("Accuracy en validación")
     plt.legend()

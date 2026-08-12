@@ -63,6 +63,17 @@ def main() -> None:
     epochs = 5000
     historial_loss_train, historial_loss_val = [], []
 
+    # Checkpoint del mejor punto de validación: el early stopping corta ~PACIENCIA_EARLY_STOP
+    # épocas DESPUÉS del mínimo real de loss_val (necesita esa ventana para confirmar que ya no
+    # mejora), así que quedarse con W/b de la época de corte sería quedarse con pesos peores que
+    # los del mínimo. Se guarda una copia de W/b cada vez que loss_val marca un nuevo mínimo, y
+    # se restaura al salir del bucle -- tanto si se corta por early stopping como si se agota
+    # epochs. Importante: .copy(), no una referencia -- si no, "restaurar" acabaría dejando los
+    # pesos finales (los arrays se siguen modificando in-place en cada paso de gradiente).
+    mejor_loss_val = np.inf
+    mejor_epoca = None
+    W_mejor, b_mejor = None, None
+
     for epoch in range(epochs):
         A_train = np.dot(X_train, W) + b
         loss_train = np.mean((A_train - Y_train) ** 2)
@@ -71,6 +82,11 @@ def main() -> None:
         A_val = np.dot(X_val, W) + b
         loss_val = np.mean((A_val - Y_val) ** 2)
         historial_loss_val.append(loss_val)
+
+        if loss_val < mejor_loss_val:
+            mejor_loss_val = loss_val
+            mejor_epoca = epoch
+            W_mejor, b_mejor = W.copy(), b.copy()
 
         dLoss_dA = 2 * (A_train - Y_train) / Y_train.shape[0]
         dW = np.dot(X_train.T, dLoss_dA)
@@ -92,7 +108,12 @@ def main() -> None:
 
     epocas_entrenadas = len(historial_loss_train)
 
-    # === Única vez que se toca el conjunto de test, ya con W y b congelados ===
+    W, b = W_mejor, b_mejor
+    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+
+    # === Única vez que se toca el conjunto de test, ya con W y b congelados (los del mínimo
+    # de validación, no los de la última época entrenada) ===
     A_test = np.dot(X_test, W) + b
     mse_test = float(np.mean((A_test - Y_test) ** 2))
     mae_test = float(np.mean(np.abs(A_test - Y_test)))
@@ -100,6 +121,7 @@ def main() -> None:
     metrics = {
         "epochs_configuradas": epochs,
         "epochs_entrenadas": epocas_entrenadas,
+        "epoca_mejor_val": mejor_epoca + 1,
         "n_train": int(len(X_train)),
         "n_val": int(len(X_val)),
         "n_test": int(len(X_test)),
@@ -107,8 +129,8 @@ def main() -> None:
         "b_aprendido": float(b[0][0]),
         "W_real": 1.8,
         "b_real": 32.0,
-        "mse_train_final": float(historial_loss_train[-1]),
-        "mse_val_final": float(historial_loss_val[-1]),
+        "mse_train_final": float(historial_loss_train[mejor_epoca]),
+        "mse_val_final": float(mejor_loss_val),
         "mse_test_final": mse_test,
         "mae_test_grados_F": mae_test,
     }

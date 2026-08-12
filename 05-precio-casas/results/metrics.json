@@ -1,10 +1,11 @@
 {
   "epochs_configuradas": 4000,
-  "epochs_entrenadas": 2345,
-  "loss_train_final": 0.0012660366549484476,
-  "loss_val_final": 0.001032649983097055,
-  "loss_test_final": 0.0012884046536676978,
-  "mae_test_euros": 11451.873112207353,
+  "epochs_entrenadas": 2362,
+  "epoca_mejor_val": 2361,
+  "loss_train_final": 0.0012765276451305967,
+  "loss_val_final": 0.0010406648054496757,
+  "loss_test_final": 0.001299096835839391,
+  "mae_test_euros": 11452.090121316394,
   "n_train": 90,
   "n_val": 30,
   "n_test": 30

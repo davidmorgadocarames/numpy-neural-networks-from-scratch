@@ -25,17 +25,22 @@ y 30 de test (20%, evaluadas una sola vez):
 
 ### Early stopping: parar en cuanto deja de mejorar de verdad
 
-Con 4000 épocas configuradas, el entrenamiento **para en la época 2345** — el error de
-**validación** lleva 200 épocas sin bajar al menos un 0.5%, así que seguir no aporta nada y
-solo gastaría tiempo de cómputo. Esto es distinto de lo que pasa en
-[`02-celsius-fahrenheit`](../02-celsius-fahrenheit/): ahí los datos no tienen ruido y el error
-sigue bajando (aunque de forma invisible en una gráfica lineal) indefinidamente, así que el
-early stopping nunca se activa. Aquí sí hay ruido gaussiano real en los precios (desviación
-15.000 €), así que existe un suelo de error que no se puede bajar por mucho que se entrene —
-en cuanto la red lo alcanza, seguir entrenando no mejora nada. El criterio concreto: se compara
-el error de validación actual contra el de 200 épocas atrás, y si la mejora relativa en toda
-esa ventana es menor al 0.5% se corta el entrenamiento (`epochs_entrenadas` en
-`results/metrics.json` guarda la época real de parada).
+Con 4000 épocas configuradas (techo de seguridad, no un objetivo), el entrenamiento **corta en
+la época 2362** — el error de **validación** lleva 200 épocas sin bajar al menos un 0.5%, así
+que seguir no aporta nada. Los pesos usados para evaluar son los de la época **2361**, el
+mínimo real de `loss_val`, restaurado por checkpoint (ver "Checkpoint del mejor punto de
+validación" en el [README raíz](../README.md)) — prácticamente el mismo punto que el de corte,
+porque aquí el error de validación deja de mejorar de forma bastante abrupta.
+
+Esto es distinto de lo que pasa en [`02-celsius-fahrenheit`](../02-celsius-fahrenheit/): ahí los
+datos no tienen ruido y el error sigue bajando (aunque de forma invisible en una gráfica lineal)
+indefinidamente, así que el early stopping nunca se activa. Aquí sí hay ruido gaussiano real en
+los precios (desviación 15.000 €), así que existe un suelo de error que no se puede bajar por
+mucho que se entrene — en cuanto la red lo alcanza, seguir entrenando no mejora nada. El
+criterio concreto: se compara el error de validación actual contra el de 200 épocas atrás, y si
+la mejora relativa en toda esa ventana es menor al 0.5% se corta el entrenamiento
+(`epochs_entrenadas` en `results/metrics.json` guarda la época real de corte, `epoca_mejor_val`
+la de los pesos realmente usados).
 
 **Visualización de datos — mapa de tasación aprendido**: el fondo de color muestra el precio
 que la red asignaría a cualquier combinación de metros/habitaciones. Los puntos son las casas

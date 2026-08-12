@@ -18,11 +18,19 @@ sabiendo qué hace realmente por debajo.
 | 01 | [Compuerta XOR](01-compuertas-logicas-xor/) | Clasificación binaria | 4/4 aciertos, loss 0.0021 |
 | 02 | [Celsius → Fahrenheit](02-celsius-fahrenheit/) | Regresión | MAE 0.0032 °F |
 | 03 | [Tipos de cliente](03-tipos-clientes/) | Clasificación (3 clases) | 100% accuracy |
-| 04 | [Temperatura día/noche](04-prediccion-temperatura-dia-noche/) | Regresión (serie temporal) | MAE 0.90 °C |
+| 04 | [Temperatura día/noche](04-prediccion-temperatura-dia-noche/) | Regresión (serie temporal) | MAE 0.88 °C |
 | 05 | [Precio de una casa](05-precio-casas/) | Regresión | MAE 11.452 € |
 | 06 | [Zonas de espirales](06-zonas-espirales/) | Clasificación (3 clases) | 97.78% accuracy |
-| 07 | [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/) | Clasificación (10 clases) | 91.67% accuracy |
-| 08 | [CNN Fashion-MNIST: baseline vs augmentation](08-cnn-fashion-mnist/) | Clasificación (10 clases) | 79.20% (baseline) vs 72.70% (augmented) |
+| 07 | [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/) | Clasificación (10 clases) | 89.67% accuracy (97.47% con dataset completo, ver abajo) |
+| 08 | [CNN Fashion-MNIST: baseline vs augmentation](08-cnn-fashion-mnist/) | Clasificación (10 clases) | 79.00% vs 74.80% (88.34% vs 85.24% con dataset completo, ver abajo) |
+
+Los proyectos 07 y 08 tienen además una variante `_full` (`digit_classifier_full.py`,
+`cnn_fashion_mnist_full.py`) entrenada sobre el dataset **completo** (70.000 imágenes) por
+**mini-batches**, en vez de la muestra reducida entrenada full-batch de la versión principal —
+las dos versiones se dejan una junto a la otra a propósito, para poder comparar en el propio
+repositorio qué gana el modelo al pasar de "muestra pequeña, 1 actualización de pesos por
+época" a "dataset completo, miles de actualizaciones por época". Detalle en el README de cada
+proyecto.
 
 ## Los 8 proyectos, de lo más simple a lo más complejo
 
@@ -52,7 +60,7 @@ Clasificación de 3 categorías. **100% accuracy en test.**
 ![Entrenamiento: arquitectura, forward, backward y resultado](03-tipos-clientes/results/training.gif)
 
 ### 04 — [Predicción de temperatura día/noche](04-prediccion-temperatura-dia-noche/)
-Regresión con ventana deslizante sobre un ciclo día/noche con ruido. **MAE 0.90 °C en test.**
+Regresión con ventana deslizante sobre un ciclo día/noche con ruido. **MAE 0.88 °C en test.**
 
 ![Predicción vs realidad](04-prediccion-temperatura-dia-noche/results/predicted_vs_real.png)
 
@@ -67,7 +75,7 @@ Clasificación con frontera curva, red profunda de 2 capas ocultas. **97.78% acc
 ![Zonas de espirales](06-zonas-espirales/results/data_visualization.png)
 
 ### 07 — [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/)
-Clasificación de 10 clases + demo interactiva para dibujar y reconocer en vivo. **91.67%
+Clasificación de 10 clases + demo interactiva para dibujar y reconocer en vivo. **89.67%
 accuracy en test.**
 
 ![Entrenamiento: arquitectura, forward, backward y resultado](07-reconocimiento-digitos/results/training.gif)
@@ -76,9 +84,9 @@ accuracy en test.**
 
 ### 08 — [CNN sobre Fashion-MNIST: baseline vs data augmentation](08-cnn-fashion-mnist/)
 Convolución + pooling + dropout, también 100% NumPy (técnica im2col). Entrenada dos veces con
-los mismos pesos iniciales para medir el efecto real de la augmentation. **79.20% accuracy
-(baseline) vs 72.70% (con augmentation)** — con este presupuesto de épocas, la augmentation
-empeora el resultado (ver README del proyecto para el análisis completo).
+los mismos pesos iniciales para medir el efecto real de la augmentation. **79.00% accuracy
+(baseline) vs 74.80% (con augmentation)** — con este presupuesto de épocas, la augmentation
+sigue por detrás del baseline (ver README del proyecto para el análisis completo).
 
 ![Entrenamiento: arquitectura, forward, backward y resultado](08-cnn-fashion-mnist/results/training.gif)
 
@@ -134,18 +142,62 @@ pytest tests/test_gradients.py -v
 
 ## Metodología: por qué train / validación / test, y no solo train / test
 
-Los proyectos con early stopping (02, 04, 05 y 08) usan un split de **tres** partes, no dos:
-**train** (ajusta los pesos), **validación** (decide cuándo activar el early stopping) y
-**test** (se evalúa una única vez, con la red ya entrenada y congelada, y no participa en
-ninguna decisión anterior). Es el fix al error clásico de "fuga de información vía el
-conjunto de test" (usar el propio test para decidir cuándo parar de entrenar, lo que
-contamina la cifra final que se reporta como si fuera una estimación limpia de
-generalización). En el proyecto 08 en concreto, este split resuelve además el problema de
-raíz de la versión anterior: baseline y augmented ya no necesitan que nadie iguale
-manualmente su criterio de parada para poder compararse de forma justa — cada uno para solo
-cuando su propia validación dice que ya no mejora, sin que el experimentador tenga que mirar
-ninguna cifra de test para decidir nada. El detalle de cada split (tamaños, y por qué en 04 el
-split respeta el orden temporal) está en el README de cada proyecto.
+Los 7 proyectos con early stopping (02 a 08, todos salvo el 01, que solo tiene 4 combinaciones
+posibles de entrada y no admite split) usan un split de **tres** partes, no dos: **train**
+(ajusta los pesos), **validación** (decide cuándo activar el early stopping) y **test** (se
+evalúa una única vez, con la red ya entrenada y congelada, y no participa en ninguna decisión
+anterior). Es el fix al error clásico de "fuga de información vía el conjunto de test" (usar
+el propio test para decidir cuándo parar de entrenar, lo que contamina la cifra final que se
+reporta como si fuera una estimación limpia de generalización). En el proyecto 08 en concreto,
+este split resuelve además el problema de raíz de la versión anterior: baseline y augmented ya
+no necesitan que nadie iguale manualmente su criterio de parada para poder compararse de forma
+justa — cada uno para solo cuando su propia validación dice que ya no mejora, sin que el
+experimentador tenga que mirar ninguna cifra de test para decidir nada. El detalle de cada
+split (tamaños, y por qué en 04 el split respeta el orden temporal) está en el README de cada
+proyecto.
+
+El número de épocas configurado en cada proyecto (`epochs` / `EPOCHS_MAX`) es un **techo de
+seguridad**, no un objetivo: existe solo para que el bucle no corra indefinidamente si nunca
+converge. La cifra real de cuánto entrenar la decide la validación. Que un proyecto agote ese
+techo sin que el early stopping llegue a activarse (02, 03, 06, 08-baseline) es tan válido como
+que se corte a mitad de camino (04, 05, 07, 08-augmented) — ambos son el mecanismo funcionando,
+no una carencia que justificar.
+
+### Checkpoint del mejor punto de validación
+
+El early stopping detecta que hace falta parar comparando la ventana de las últimas
+`PACIENCIA_EARLY_STOP` épocas contra la de referencia — necesita esa ventana completa para
+confirmar que la validación ya no mejora, así que el bucle corta ~`PACIENCIA_EARLY_STOP` épocas
+**después** del mínimo real de `loss_val`, no en él. Quedarse sin más con los pesos de la época
+de corte sería, por tanto, quedarse con pesos ligeramente peores que los del mínimo.
+
+Los 7 proyectos con early stopping guardan una copia de los pesos (`W`/`b` de cada capa con
+parámetros propios — `CapaDensa`, y además `CapaConv2D` en el proyecto 08) cada vez que
+`loss_val` marca un nuevo mínimo, y los restauran al salir del bucle, tanto si se corta por
+early stopping como si se agota el techo de épocas. El detalle que importa es `.copy()`: sin
+copiar los arrays se guardarían referencias que se siguen modificando en cada paso de
+gradiente, y "restaurar" acabaría dejando los pesos finales en vez de los del mínimo — un bug
+silencioso fácil de no notar porque el código no lanza ningún error.
+
+### Full-batch vs. mini-batch: las variantes `_full` de 07 y 08
+
+El resto del repo entrena **full-batch**: toda la muestra de golpe, una única actualización de
+pesos por época. Es lo más simple de leer y suficiente con muestras pequeñas, pero no escala —
+con decenas de miles de imágenes, seguir haciendo full-batch significaría 1 sola actualización
+de pesos por época sobre una matriz enorme. `07-reconocimiento-digitos/digit_classifier_full.py`
+y `08-cnn-fashion-mnist/cnn_fashion_mnist_full.py` entrenan la misma arquitectura sobre el
+dataset **completo** (70.000 imágenes) por **mini-batches** en vez de una muestra reducida
+full-batch — mismo split 60/20/20, mismo early stopping y checkpoint por validación, distinto
+solo el tamaño de muestra y el bucle de actualización de pesos. Se dejan como scripts
+independientes (no sustituyen a los originales) para que ambos resultados queden documentados
+uno junto al otro y se pueda comparar directamente qué gana el modelo con más muestra.
+
+Error clásico a vigilar al convertir un bucle full-batch en mini-batch: el gradiente de la capa
+de salida se normaliza por el tamaño del **batch actual** (`Yb.shape[0]`), no por el tamaño de
+todo el conjunto de train (`Y_train.shape[0]`). Dejar el denominador del full-batch original es
+un bug silencioso — no lanza ningún error, simplemente dispara la escala del gradiente por un
+factor igual al número de batches por época, y el entrenamiento diverge o no converge en
+absoluto sin que quede claro por qué.
 
 ## Limitaciones generales
 

@@ -5,18 +5,30 @@ con una red neuronal escrita **completamente desde cero en NumPy** — sin Tenso
 Keras, sin PyTorch. Red modular 784 → 128 (LeakyReLU) → 10 (Softmax), usando el mismo
 mini-framework de [`../capas.py`](../capas.py) que el resto de proyectos de este repo.
 
-Se separa un conjunto de test estratificado por dígito, nunca visto en el entrenamiento, para
-reportar una accuracy y una matriz de confusión honestas.
+Split en tres partes estratificado por dígito -- train / validación / test -- con early
+stopping que decide cuándo parar mirando el error de VALIDACIÓN, nunca el de test. El test se
+toca una única vez, al final, con la red ya congelada, para reportar una accuracy y una matriz
+de confusión honestas sobre dígitos nunca vistos en el entrenamiento.
 
 ## 1. Entrenamiento — `digit_classifier.py`
 
-Entrena la red sobre 1200 imágenes (120 por dígito) y evalúa sobre 300 de test (30 por dígito,
-nunca vistas en el entrenamiento). Guarda los pesos entrenados en `results/red_pesos.npz` para
-que la demo interactiva no tenga que reentrenar.
+Entrena la red sobre 1200 imágenes (120 por dígito), valida sobre 300 (30 por dígito, deciden
+el early stopping) y evalúa sobre otras 300 de test (30 por dígito, nunca vistas hasta la
+evaluación final). Guarda los pesos entrenados en `results/red_pesos.npz` para que la demo
+interactiva no tenga que reentrenar.
 
-**Resultado**: **91.67% accuracy en test** tras 800 épocas — con una red minúscula (784→128→10,
-~101k parámetros) entrenada sobre solo 1200 imágenes y sin ningún tipo de aumento de datos ni
-regularización.
+**Resultado**: **89.67% accuracy en test**. El early stopping corta en la época 619 de las 800
+configuradas (techo de seguridad, no un objetivo), pero los pesos usados para evaluar son los
+de la época 543 -- el mínimo real de `loss_val`, restaurado por checkpoint (ver "Checkpoint del
+mejor punto de validación" en el [README raíz](../README.md); el early stopping necesita ver
+200 épocas sin mejora para confirmar el corte, así que el punto en que corta siempre queda por
+detrás del mínimo real). Con una red minúscula (784→128→10, ~101k parámetros) entrenada sobre
+solo 1200 imágenes y sin ningún tipo de aumento de datos ni regularización. Antes, sin
+validación, la red entrenaba las 800 épocas completas y llegaba a 91.67% en test, pero ese
+número no era comparable con nada: no había forma honesta de saber si a la época 800 la red ya
+estaba sobreajustando, porque el propio test se usaba de facto como referencia implícita para
+fijar `epochs=800`. El 89.67% actual es más bajo pero es la cifra en la que se puede confiar,
+porque la decisión de parar la tomó la validación sin haber mirado nunca el test.
 
 ![Curva de aprendizaje](results/learning_curve.png)
 
@@ -28,28 +40,75 @@ regularización.
 
 ![Matriz de confusión](results/confusion_matrix.png)
 
-**Lectura de la matriz**: la diagonal domina (272 de 300 aciertos) y casi todos los errores
-son casos sueltos (1 imagen), lo esperable con solo 1200 imágenes de entrenamiento y sin
-aumento de datos. Dos patrones sí destacan por repetirse más de una vez:
+**Lectura de la matriz**: la diagonal domina (269 de 300 aciertos) y la mayoría de errores son
+casos sueltos, lo esperable con solo 1200 imágenes de entrenamiento, sin aumento de datos y
+parando el entrenamiento en cuanto la validación deja de mejorar. Dos patrones destacan:
 
-- **"3" es el dígito más difícil** (25/30 = 83%, el peor de los 10): se confunde con 2, 5, 7,
-  8 y 9, una imagen cada uno. Tiene sentido — un "3" mal trazado comparte curvas con varios
-  otros dígitos según el estilo de letra, mientras que dígitos con forma más rígida (0, 1, 6,
-  9) apenas se confunden con nada.
-- **"5"→"8" (2 casos) y "8"→"6" (2 casos)**: confusiones clásicas de MNIST por trazo
-  incompleto — un "5" cuyo trazo superior se cierra un poco de más empieza a parecer un "8", y
-  un "8" cuyo lazo superior no queda del todo cerrado se lee como un "6".
+- **"9" es el dígito más difícil** (23/30 = 76.7%, el peor de los 10): se confunde sobre todo
+  con "3" (3 casos) y "7" (3 casos). Tiene sentido en trazos manuscritos donde el lazo superior
+  del 9 queda poco cerrado o el trazo vertical se confunde con el travesaño del 7.
+- **"4"→"9" es la confusión individual más repetida (5 de 30 cuatros)**: un "4" con el trazo
+  superior cerrado o desplazado se parece mucho a un "9" en letra manuscrita — la red pequeña,
+  entrenada con pocos datos y parada pronto por el early stopping, no llega a aprender el
+  detalle fino (el ángulo abierto del 4 frente al lazo cerrado del 9) que distingue ambos casos.
 
 Con una red más grande, más datos o aumento de datos (rotaciones/desplazamientos pequeños)
 estos casos límite mejorarían.
 
-## 2. Demo interactiva — `demo_gradio.py`
+## 2. Dataset completo + mini-batches — `digit_classifier_full.py`
 
-Carga los pesos ya entrenados y abre un Sketchpad donde se puede dibujar un dígito a mano para
-clasificarlo en vivo. Reutiliza el mismo preprocesado de centrado por centro de masa (caja
-20x20 dentro de un lienzo 28x28) que replica cómo está construido MNIST realmente — sin ese
-centrado, un trazo dibujado a mano y simplemente reescalado queda muy descentrado respecto a
-los datos de entrenamiento y la precisión cae mucho aunque la red esté bien entrenada.
+`digit_classifier.py` usa full-batch: una única actualización de pesos por época, sobre toda la
+muestra de golpe. Es manejable con 1.200 imágenes, pero no escala -- con las 70.000 imágenes
+completas de MNIST, seguir haciendo full-batch significaría 1 sola actualización de pesos por
+época sobre una matriz enorme. `digit_classifier_full.py` es la misma red y la misma
+metodología (split 60/20/20, early stopping por validación, checkpoint del mejor punto),
+entrenada en cambio por **mini-batches de 32 imágenes** (~1.313 actualizaciones de pesos por
+época) sobre el dataset **completo**, estratificado 60/20/20 por dígito usando las 70.000
+imágenes reales de MNIST (no perfectamente equilibrado entre dígitos: entre 6.313 y 7.877
+imágenes según el dígito).
+
+Detalle importante al convertir full-batch en mini-batch: el gradiente de la capa de salida se
+normaliza por el tamaño del **batch actual** (`Yb.shape[0]`), no por el tamaño de todo el
+conjunto de train — dejar el denominador del full-batch original es un error clásico y
+silencioso (ningún except salta, el entrenamiento simplemente converge mal o absurdamente
+despacio).
+
+| | Train | Val | Test | Accuracy test |
+|---|---|---|---|---|
+| Muestra reducida, full-batch (`digit_classifier.py`) | 1.200 | 300 | 300 | 89.67% |
+| Dataset completo, mini-batch (`digit_classifier_full.py`) | 41.995 | 13.996 | 14.009 | **97.47%** |
+
+La mejora (+7.8 puntos) confirma que el límite real de la versión reducida no era la
+arquitectura (784→128→10 sigue siendo la misma red en ambos casos) sino la combinación de poca
+muestra y una sola actualización de pesos por época. Con mini-batches, la red converge además
+en muchísimas menos épocas: early stopping en la época 19 (de 30 configuradas), con los pesos
+restaurados de la época 15 — frente a las 619 épocas (de 800) que necesitaba la versión
+full-batch, porque cada "época" aquí ya contiene ~1.313 pasos de descenso de gradiente en vez
+de 1.
+
+![Curva de aprendizaje (dataset completo)](results_full/learning_curve.png)
+
+**Matriz de confusión (test, dataset completo)**:
+
+![Matriz de confusión (dataset completo)](results_full/confusion_matrix.png)
+
+**Lectura**: con 14.009 imágenes de test, la diagonal domina de forma mucho más uniforme que en
+la versión reducida — el peor dígito pasa de 76.7% (el "9" en la muestra pequeña) a **96.3%**
+("8" y "9", ahora casi empatados). La confusión "4"→"9" que era la más repetida en la versión
+reducida (5 de 30 cuatros, 16.7%) sigue siendo la más frecuente en términos absolutos (21 de
+1.366 cuatros), pero ahora es solo un 1.5% de los cuatros de test — el mismo patrón de
+confusión real (rasgos compartidos entre 4 y 9 mal trazados) sigue ahí, simplemente con muchos
+menos casos porque la red tiene mucha más muestra de la que aprender el detalle fino que los
+distingue.
+
+## 3. Demo interactiva — `demo_gradio.py`
+
+Carga los pesos ya entrenados (de `digit_classifier.py`, la versión reducida) y abre un
+Sketchpad donde se puede dibujar un dígito a mano para clasificarlo en vivo. Reutiliza el mismo
+preprocesado de centrado por centro de masa (caja 20x20 dentro de un lienzo 28x28) que replica
+cómo está construido MNIST realmente — sin ese centrado, un trazo dibujado a mano y simplemente
+reescalado queda muy descentrado respecto a los datos de entrenamiento y la precisión cae mucho
+aunque la red esté bien entrenada.
 
 ![Demo interactiva: dibujar un dígito y clasificarlo con la red NumPy](results/demo_sketchpad.gif)
 
@@ -57,14 +116,17 @@ los datos de entrenamiento y la precisión cae mucho aunque la red esté bien en
 
 ```bash
 pip install -r ../requirements.txt
-python digit_classifier.py   # entrena y guarda los pesos (~1-2 min, descarga MNIST la primera vez)
-python demo_gradio.py        # demo interactiva, requiere haber ejecutado antes digit_classifier.py
+python digit_classifier.py        # versión reducida, full-batch (~1-2 min, descarga MNIST la primera vez)
+python digit_classifier_full.py   # dataset completo, mini-batch (~pocos minutos, ver README)
+python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 ```
 
 ## Limitaciones
 
-- Solo 1200 imágenes de entrenamiento (frente a las 60.000 de MNIST completo) para que el
-  entrenamiento sea rápido en CPU sin frameworks optimizados — con más datos la accuracy
-  subiría, pero no es el objetivo de este proyecto (demostrar el mecanismo interno, no
-  maximizar el benchmark).
+- `digit_classifier.py` usa solo 1.200 imágenes de entrenamiento (frente a las ~42.000
+  disponibles con el split completo) precisamente para poder entrenar full-batch en CPU sin
+  frameworks optimizados de forma rápida y sencilla de leer — es una limitación intencionada
+  para ilustrar el mecanismo con claridad, no un límite real: `digit_classifier_full.py`
+  entrena sobre el dataset completo con mini-batches y consigue 97.47% frente al 89.67% de la
+  versión reducida (ver sección 2 arriba).
 - Sin aumento de datos, regularización (dropout) ni ajuste de hiperparámetros.

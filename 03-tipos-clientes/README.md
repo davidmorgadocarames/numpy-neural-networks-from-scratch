@@ -4,8 +4,10 @@ Clasifica clientes de una tienda online en 3 categorías (Navegadores, Ocasional
 partir de 2 variables: minutos navegando y productos en el carrito. Red modular
 (Densa → LeakyReLU → Densa → Softmax) entrenada con entropía cruzada.
 
-Se separa un 20% como test estratificado por categoría, para medir generalización real con
-una matriz de confusión sobre clientes nunca vistos en el entrenamiento.
+Split en tres partes -- 60% train / 20% validación / 20% test, estratificado por categoría --
+con early stopping que decide cuándo parar mirando el error de VALIDACIÓN, nunca el de test.
+El test se toca una única vez, al final, con la red ya congelada, para medir generalización
+real con una matriz de confusión sobre clientes nunca vistos en el entrenamiento.
 
 ## Bug corregido: faltaba normalizar los datos
 
@@ -22,19 +24,23 @@ accuracy en test**.
 
 ## Resultado
 
-**Accuracy en test: 100%** (21 clientes de test, de 120 en total), tras 3000 épocas.
+**Accuracy en test: 100%** (24 clientes de test, de 120 en total: 72 train / 24 val / 24
+test), tras 3000 épocas -- el problema está tan bien separado que el early stopping no llega
+a activarse, la red converge sin overfitting dentro del propio presupuesto de épocas.
 
 ![Curva de aprendizaje](results/learning_curve.png)
 
 **Visualización de datos — zonas aprendidas**: el fondo de color muestra en qué categoría
-clasificaría la red cualquier punto del plano. Las estrellas amarillas son los clientes de
-test (nunca vistos en el entrenamiento) — todas caen dentro de la zona de su color correcto,
-y la frontera entre zonas pasa limpiamente por el hueco vacío entre las 3 nubes de puntos.
+clasificaría la red cualquier punto del plano. Los triángulos son los clientes de validación
+(deciden cuándo parar, pero nunca entran en el gradiente) y las estrellas amarillas son los
+clientes de test (nunca vistos hasta la evaluación final) — todos caen dentro de la zona de su
+color correcto, y la frontera entre zonas pasa limpiamente por el hueco vacío entre las 3 nubes
+de puntos.
 
 ![Zonas de clientes](results/data_visualization.png)
 
 **Matriz de confusión (test)**: con clases perfectamente separables y la red ya convergida,
-la matriz es una diagonal perfecta — cada uno de los 7 clientes de test de cada categoría cae
+la matriz es una diagonal perfecta — cada uno de los 8 clientes de test de cada categoría cae
 en su celda "real = predicción" (Navegadores→Navegadores, Ocasionales→Ocasionales,
 VIPs→VIPs) y las celdas fuera de la diagonal están todas a 0, es decir, cero errores:
 

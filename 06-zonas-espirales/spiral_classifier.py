@@ -4,8 +4,14 @@ que una red con capas ocultas puede aprender fronteras de decisión curvas que n
 lineal podría representar. Red modular profunda (Densa -> LeakyReLU -> Densa -> LeakyReLU ->
 Densa -> Softmax), 2 capas ocultas de 64 neuronas.
 
-Se separa un 20% como test para medir generalización real con una matriz de confusión sobre
-puntos nunca vistos en el entrenamiento.
+Split en TRES partes -- 60% train / 20% validación / 20% test, estratificado por brazo -- con
+early stopping mirando el error de VALIDACIÓN. Es un cambio necesario, no cosmético: con solo
+train/test y una red de ~9k parámetros, este problema sobreajusta a partir de la época ~1047
+(el error de test empieza a subir mientras el de train sigue bajando) y sin un conjunto de
+validación separado no hay forma legítima de detectar ese punto de corte sin espiar el propio
+test -- parar mirando el test y luego reportar accuracy sobre ese mismo test sería trampa. Con
+validación, el early stopping decide cuándo parar sin haber tocado el test, que se evalúa una
+única vez al final ya con la red congelada.
 
 Uso: python spiral_classifier.py
 """
@@ -29,6 +35,11 @@ RESULTS_DIR.mkdir(exist_ok=True)
 N_POR_BRAZO = 150
 K_CLASES = 3
 
+# Early stopping: para el entrenamiento en cuanto el error de VALIDACIÓN deja de mejorar de
+# verdad (ver README de 04/05 para la explicación completa).
+PACIENCIA_EARLY_STOP = 200
+MEJORA_MINIMA_RELATIVA = 0.005
+
 
 def main() -> None:
     np.random.seed(SEED)
@@ -44,19 +55,23 @@ def main() -> None:
     Y = np.zeros((N_POR_BRAZO * K_CLASES, K_CLASES))
     Y[np.arange(N_POR_BRAZO * K_CLASES), Y_num] = 1
 
-    # Split train/test estratificado por brazo (80% train, 20% test)
+    # Split train/val/test estratificado por brazo (60% train / 20% validación / 20% test)
     rng = np.random.default_rng(SEED)
-    indices_train, indices_test = [], []
+    indices_train, indices_val, indices_test = [], [], []
     for clase in range(K_CLASES):
         idx_clase = np.where(Y_num == clase)[0]
         rng.shuffle(idx_clase)
-        corte = int(0.8 * len(idx_clase))
-        indices_train.extend(idx_clase[:corte])
-        indices_test.extend(idx_clase[corte:])
-    indices_train, indices_test = np.array(indices_train), np.array(indices_test)
+        corte_train = int(0.6 * len(idx_clase))
+        corte_val = int(0.8 * len(idx_clase))
+        indices_train.extend(idx_clase[:corte_train])
+        indices_val.extend(idx_clase[corte_train:corte_val])
+        indices_test.extend(idx_clase[corte_val:])
+    indices_train = np.array(indices_train)
+    indices_val = np.array(indices_val)
+    indices_test = np.array(indices_test)
 
-    X_train, X_test = X[indices_train], X[indices_test]
-    Y_train, Y_test = Y[indices_train], Y[indices_test]
+    X_train, X_val, X_test = X[indices_train], X[indices_val], X[indices_test]
+    Y_train, Y_val, Y_test = Y[indices_train], Y[indices_val], Y[indices_test]
     Y_num_test = Y_num[indices_test]
 
     red = [
@@ -70,7 +85,17 @@ def main() -> None:
 
     learning_rate = 0.2
     epochs = 5000
-    historial_loss_train, historial_loss_test = [], []
+    historial_loss_train, historial_loss_val = [], []
+
+    # Checkpoint del mejor punto de validación: el early stopping corta ~PACIENCIA_EARLY_STOP
+    # épocas DESPUÉS del mínimo real de loss_val, así que quedarse con los pesos de la época de
+    # corte sería quedarse con pesos peores que los del mínimo. Se guarda una copia de los pesos
+    # de cada CapaDensa cada vez que loss_val marca un nuevo mínimo, y se restauran al salir del
+    # bucle. Importante: .copy(), no una referencia -- si no, "restaurar" acabaría dejando los
+    # pesos finales (los arrays se siguen modificando in-place en cada paso de gradiente).
+    mejor_loss_val = np.inf
+    mejor_epoca = None
+    mejores_pesos = None
 
     for epoch in range(epochs):
         activacion = X_train
@@ -81,38 +106,68 @@ def main() -> None:
         loss_train = -np.mean(np.sum(Y_train * np.log(A_train + 1e-15), axis=1))
         historial_loss_train.append(loss_train)
 
-        A_test = predecir(red, X_test)
-        loss_test = -np.mean(np.sum(Y_test * np.log(A_test + 1e-15), axis=1))
-        historial_loss_test.append(loss_test)
+        A_val = predecir(red, X_val)
+        loss_val = -np.mean(np.sum(Y_val * np.log(A_val + 1e-15), axis=1))
+        historial_loss_val.append(loss_val)
+
+        if loss_val < mejor_loss_val:
+            mejor_loss_val = loss_val
+            mejor_epoca = epoch
+            mejores_pesos = [(c.W.copy(), c.b.copy()) for c in red if isinstance(c, CapaDensa)]
 
         gradiente = (A_train - Y_train) / Y_train.shape[0]
         for capa in reversed(red[:-1]):
             gradiente = capa.backward(gradiente, learning_rate)
 
+        if epoch >= PACIENCIA_EARLY_STOP:
+            loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
+            mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
+            if mejora_relativa < MEJORA_MINIMA_RELATIVA:
+                print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
+                      f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
+                break
+    else:
+        print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
+
+    epocas_entrenadas = len(historial_loss_train)
+
+    for capa, (W, b) in zip([c for c in red if isinstance(c, CapaDensa)], mejores_pesos):
+        capa.W, capa.b = W, b
+    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+
+    # === Única vez que se toca el conjunto de test, ya con la red entrenada (pesos del mínimo
+    # de validación, no los de la última época entrenada) ===
     A_test = predecir(red, X_test)
     pred_test = np.argmax(A_test, axis=1)
     accuracy_test = float(np.mean(pred_test == Y_num_test))
+    loss_test = float(-np.mean(np.sum(Y_test * np.log(A_test + 1e-15), axis=1)))
 
     matriz_confusion = np.zeros((3, 3), dtype=int)
     for real, pred in zip(Y_num_test, pred_test):
         matriz_confusion[real, pred] += 1
 
     metrics = {
-        "epochs": epochs,
-        "loss_train_final": float(historial_loss_train[-1]),
-        "loss_test_final": float(historial_loss_test[-1]),
+        "epochs_configuradas": epochs,
+        "epochs_entrenadas": epocas_entrenadas,
+        "epoca_mejor_val": mejor_epoca + 1,
+        "loss_train_final": float(historial_loss_train[mejor_epoca]),
+        "loss_val_final": float(mejor_loss_val),
+        "loss_test_final": loss_test,
         "accuracy_test": accuracy_test,
         "n_train": int(len(X_train)),
+        "n_val": int(len(X_val)),
         "n_test": int(len(X_test)),
         "matriz_confusion": matriz_confusion.tolist(),
     }
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     print(f"Accuracy test: {accuracy_test:.4f} ({len(X_test)} puntos de test)")
 
-    # === Gráfico 1: curva de aprendizaje ===
+    # === Gráfico 1: curva de aprendizaje (train + validación, que es lo que decide cuándo
+    # parar) ===
     plt.figure(figsize=(6, 4))
     plt.plot(historial_loss_train, color="purple", label="Train")
-    plt.plot(historial_loss_test, color="orange", linestyle="--", label="Test")
+    plt.plot(historial_loss_val, color="orange", linestyle="--", label="Validación")
     plt.title("Curva de aprendizaje (reto espiral)", fontweight="bold")
     plt.xlabel("Épocas")
     plt.ylabel("Pérdida")
@@ -132,6 +187,8 @@ def main() -> None:
     plt.contourf(xx, yy, frontera, alpha=0.5, cmap="jet")
     plt.scatter(X_train[:, 0], X_train[:, 1], c=Y_num[indices_train], s=30, cmap="jet",
                 edgecolors="k", label="Train")
+    plt.scatter(X_val[:, 0], X_val[:, 1], c=Y_num[indices_val], s=50, cmap="jet", marker="^",
+                edgecolors="k", label="Validación")
     plt.scatter(X_test[:, 0], X_test[:, 1], c=Y_num_test, s=80, cmap="jet", marker="*",
                 edgecolors="white", linewidths=1.2, label="Test")
     plt.title("Zonas de espirales aprendidas por la red", fontweight="bold")

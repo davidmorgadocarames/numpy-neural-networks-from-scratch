@@ -11,6 +11,11 @@ Es un problema de REGRESIÓN (predice un precio en euros, no una categoría), as
 una matriz de confusión -- el equivalente honesto es el mapa de precios aprendido y el error
 en euros sobre casas de test nunca vistas en el entrenamiento.
 
+El min/max de la normalización se calcula solo con el tramo de train (igual que en
+03-tipos-clientes) y se aplica después a validación y test -- calcularlo con los 150 ejemplos
+completos antes del split sería una fuga de información: la red vería el rango de precios y
+metros cuadrados de validación/test antes de tiempo.
+
 Uso: python house_price.py
 """
 
@@ -49,19 +54,24 @@ def main() -> None:
     ruido = np.random.normal(0, 15000, (150, 1))
     Y_puro = precio_base + ruido
 
-    X_min, X_max = np.min(X_puro, axis=0), np.max(X_puro, axis=0)
-    X_norm = (X_puro - X_min) / (X_max - X_min)
-    Y_min, Y_max = np.min(Y_puro), np.max(Y_puro)
-    Y_norm = (Y_puro - Y_min) / (Y_max - Y_min)
-
     # 90 train (60%) / 30 validación (20%, decide el early stopping) / 30 test (20%, se toca
-    # una sola vez, al final).
+    # una sola vez, al final). El split se hace ANTES de normalizar para que min/max salgan solo
+    # de train (igual que en 03-tipos-clientes) -- si no, la red vería el rango de val/test.
     indices = np.arange(150)
     np.random.shuffle(indices)
     n_train, n_val = 90, 30
     idx_train, idx_val, idx_test = indices[:n_train], indices[n_train:n_train + n_val], indices[n_train + n_val:]
-    X_train, X_val, X_test = X_norm[idx_train], X_norm[idx_val], X_norm[idx_test]
-    Y_train, Y_val, Y_test = Y_norm[idx_train], Y_norm[idx_val], Y_norm[idx_test]
+    X_train_raw, X_val_raw, X_test_raw = X_puro[idx_train], X_puro[idx_val], X_puro[idx_test]
+    Y_train_raw, Y_val_raw, Y_test_raw = Y_puro[idx_train], Y_puro[idx_val], Y_puro[idx_test]
+
+    X_min, X_max = np.min(X_train_raw, axis=0), np.max(X_train_raw, axis=0)
+    Y_min, Y_max = np.min(Y_train_raw), np.max(Y_train_raw)
+    X_train, X_val, X_test = ((X_train_raw - X_min) / (X_max - X_min),
+                               (X_val_raw - X_min) / (X_max - X_min),
+                               (X_test_raw - X_min) / (X_max - X_min))
+    Y_train, Y_val, Y_test = ((Y_train_raw - Y_min) / (Y_max - Y_min),
+                               (Y_val_raw - Y_min) / (Y_max - Y_min),
+                               (Y_test_raw - Y_min) / (Y_max - Y_min))
 
     red = [
         CapaDensa(dim_entrada=2, dim_salida=16, semilla_he=False),
@@ -72,6 +82,16 @@ def main() -> None:
     learning_rate = 0.05
     epochs = 4000
     historial_loss_train, historial_loss_val = [], []
+
+    # Checkpoint del mejor punto de validación: el early stopping corta ~PACIENCIA_EARLY_STOP
+    # épocas DESPUÉS del mínimo real de loss_val, así que quedarse con los pesos de la época de
+    # corte sería quedarse con pesos peores que los del mínimo. Se guarda una copia de los pesos
+    # de cada CapaDensa cada vez que loss_val marca un nuevo mínimo, y se restauran al salir del
+    # bucle. Importante: .copy(), no una referencia -- si no, "restaurar" acabaría dejando los
+    # pesos finales (los arrays se siguen modificando in-place en cada paso de gradiente).
+    mejor_loss_val = np.inf
+    mejor_epoca = None
+    mejores_pesos = None
 
     for epoch in range(epochs):
         activacion = X_train
@@ -85,6 +105,11 @@ def main() -> None:
         A2_val = predecir(red, X_val)
         loss_val = np.mean((A2_val - Y_val) ** 2)
         historial_loss_val.append(loss_val)
+
+        if loss_val < mejor_loss_val:
+            mejor_loss_val = loss_val
+            mejor_epoca = epoch
+            mejores_pesos = [(c.W.copy(), c.b.copy()) for c in red if isinstance(c, CapaDensa)]
 
         gradiente = 2 * (A2_train - Y_train) / Y_train.shape[0]
         for capa in reversed(red):
@@ -102,7 +127,13 @@ def main() -> None:
 
     epocas_entrenadas = len(historial_loss_train)
 
-    # === Única vez que se toca el conjunto de test, ya con la red entrenada ===
+    for capa, (W, b) in zip([c for c in red if isinstance(c, CapaDensa)], mejores_pesos):
+        capa.W, capa.b = W, b
+    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+
+    # === Única vez que se toca el conjunto de test, ya con la red entrenada (pesos del mínimo
+    # de validación, no los de la última época entrenada) ===
     A2_test = predecir(red, X_test)
     loss_test = float(np.mean((A2_test - Y_test) ** 2))
     precio_pred_test = A2_test * (Y_max - Y_min) + Y_min
@@ -112,8 +143,9 @@ def main() -> None:
     metrics = {
         "epochs_configuradas": epochs,
         "epochs_entrenadas": epocas_entrenadas,
-        "loss_train_final": float(historial_loss_train[-1]),
-        "loss_val_final": float(historial_loss_val[-1]),
+        "epoca_mejor_val": mejor_epoca + 1,
+        "loss_train_final": float(historial_loss_train[mejor_epoca]),
+        "loss_val_final": float(mejor_loss_val),
         "loss_test_final": loss_test,
         "mae_test_euros": mae_euros,
         "n_train": int(len(X_train)),

@@ -1,9 +1,13 @@
 {
-  "epochs": 5000,
-  "loss_train_final": 0.013560981393494024,
-  "loss_test_final": 0.0696676951504321,
+  "epochs_configuradas": 5000,
+  "epochs_entrenadas": 5000,
+  "epoca_mejor_val": 4996,
+  "loss_train_final": 0.012300174953535713,
+  "loss_val_final": 0.0200479670635124,
+  "loss_test_final": 0.07616406162306091,
   "accuracy_test": 0.9777777777777777,
-  "n_train": 360,
+  "n_train": 270,
+  "n_val": 90,
   "n_test": 90,
   "matriz_confusion": [
     [

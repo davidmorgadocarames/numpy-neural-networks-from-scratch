@@ -4,8 +4,12 @@ minutos navegando y productos en el carrito. Red modular (Densa -> LeakyReLU -> 
 Softmax) entrenada con entropía cruzada para separar 3 categorías: Navegadores, Ocasionales
 y VIPs.
 
-Se separa un 20% de clientes como test para medir generalización real con una matriz de
-confusión sobre datos nunca vistos en el entrenamiento.
+Split en TRES partes -- 60% train / 20% validación / 20% test, estratificado por clase -- para
+poder decidir cuándo parar mirando el error de VALIDACIÓN (early stopping) sin tocar el
+conjunto de test hasta la evaluación final, igual que en 04-prediccion-temperatura-dia-noche y
+05-precio-casas. Antes solo había train/test: la curva de "test" se dibujaba en cada época sin
+que nada dependiera de ella, pero no había ninguna señal honesta para decidir cuándo parar de
+entrenar sin espiar el propio test.
 
 También corrige un bug de una versión anterior: minutos y productos se pasaban a la red sin
 normalizar (hasta ~50 de magnitud), lo que frenaba tanto el descenso de gradiente que ni
@@ -34,13 +38,19 @@ SEED = 42
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 NOMBRES_CLASES = ["Navegadores", "Ocasionales", "VIPs"]
+COLORES_CLASES = ["red", "green", "blue"]
+
+# Early stopping: para el entrenamiento en cuanto el error de VALIDACIÓN deja de mejorar de
+# verdad (ver README de 04/05 para la explicación completa).
+PACIENCIA_EARLY_STOP = 200
+MEJORA_MINIMA_RELATIVA = 0.005
 
 
 def main() -> None:
     np.random.seed(SEED)
 
     # 3 categorías de clientes, 40 por categoría (120 en total) -- más muestra que el
-    # original (20/categoría) para poder permitirse un test set decente sin quedarse corto.
+    # original (20/categoría) para poder permitirse un split de 3 partes decente.
     X0 = np.random.uniform(2, 10, (40, 2)) + np.array([0, 0])
     X1 = np.random.uniform(15, 25, (40, 2)) + np.array([0, 2])
     X2 = np.random.uniform(30, 45, (40, 2)) + np.array([0, 6])
@@ -50,27 +60,33 @@ def main() -> None:
     Y = np.zeros((120, 3))
     Y[np.arange(120), Y_num] = 1
 
-    # Split train/test estratificado por clase (33 train + 7 test por categoría)
-    indices_train, indices_test = [], []
+    # Split train/val/test estratificado por clase: 24 train (60%) + 8 val (20%) + 8 test (20%)
+    # por categoría.
+    indices_train, indices_val, indices_test = [], [], []
     rng = np.random.default_rng(SEED)
+    N_TRAIN_CLASE, N_VAL_CLASE = 24, 8
     for clase in range(3):
         idx_clase = np.where(Y_num == clase)[0]
         rng.shuffle(idx_clase)
-        indices_train.extend(idx_clase[:33])
-        indices_test.extend(idx_clase[33:])
-    indices_train, indices_test = np.array(indices_train), np.array(indices_test)
+        indices_train.extend(idx_clase[:N_TRAIN_CLASE])
+        indices_val.extend(idx_clase[N_TRAIN_CLASE : N_TRAIN_CLASE + N_VAL_CLASE])
+        indices_test.extend(idx_clase[N_TRAIN_CLASE + N_VAL_CLASE :])
+    indices_train = np.array(indices_train)
+    indices_val = np.array(indices_val)
+    indices_test = np.array(indices_test)
 
-    X_train_raw, X_test_raw = X[indices_train], X[indices_test]
-    Y_train, Y_test = Y[indices_train], Y[indices_test]
+    X_train_raw, X_val_raw, X_test_raw = X[indices_train], X[indices_val], X[indices_test]
+    Y_train, Y_val, Y_test = Y[indices_train], Y[indices_val], Y[indices_test]
     Y_num_test = Y_num[indices_test]
 
-    # Normalización min-max (con min/max de TRAIN, nunca de test) -- sin esto, minutos y
+    # Normalización min-max (con min/max de TRAIN, nunca de val/test) -- sin esto, minutos y
     # productos llegan a la red en escalas de hasta 50, lo que en la práctica frena tanto el
     # descenso de gradiente que a las 3000 épocas la red seguía sin converger del todo y
     # confundía "Ocasionales" con "VIPs" aunque las categorías no se solapan en ninguna de las
     # 2 variables. Con los mismos hiperparámetros pero datos normalizados, converge a 100%.
     X_min, X_max = X_train_raw.min(axis=0), X_train_raw.max(axis=0)
     X_train = (X_train_raw - X_min) / (X_max - X_min)
+    X_val = (X_val_raw - X_min) / (X_max - X_min)
     X_test = (X_test_raw - X_min) / (X_max - X_min)
 
     red = [
@@ -82,40 +98,78 @@ def main() -> None:
 
     learning_rate = 0.01
     epochs = 3000
-    historial_loss_train, historial_loss_test = [], []
+    historial_loss_train, historial_loss_val = [], []
+
+    # Checkpoint del mejor punto de validación: el early stopping corta ~PACIENCIA_EARLY_STOP
+    # épocas DESPUÉS del mínimo real de loss_val, así que quedarse con los pesos de la época de
+    # corte sería quedarse con pesos peores que los del mínimo. Se guarda una copia de los pesos
+    # de cada CapaDensa cada vez que loss_val marca un nuevo mínimo, y se restauran al salir del
+    # bucle. Importante: .copy(), no una referencia -- si no, "restaurar" acabaría dejando los
+    # pesos finales (los arrays se siguen modificando in-place en cada paso de gradiente).
+    mejor_loss_val = np.inf
+    mejor_epoca = None
+    mejores_pesos = None
 
     for epoch in range(epochs):
         activacion = X_train
         for capa in red:
             activacion = capa.forward(activacion)
-        A2_train = activacion
+        A_train = activacion
 
-        loss_train = -np.mean(np.sum(Y_train * np.log(A2_train + 1e-15), axis=1))
+        loss_train = -np.mean(np.sum(Y_train * np.log(A_train + 1e-15), axis=1))
         historial_loss_train.append(loss_train)
 
-        A2_test = predecir(red, X_test)
-        loss_test = -np.mean(np.sum(Y_test * np.log(A2_test + 1e-15), axis=1))
-        historial_loss_test.append(loss_test)
+        A_val = predecir(red, X_val)
+        loss_val = -np.mean(np.sum(Y_val * np.log(A_val + 1e-15), axis=1))
+        historial_loss_val.append(loss_val)
 
-        gradiente = (A2_train - Y_train) / Y_train.shape[0]
+        if loss_val < mejor_loss_val:
+            mejor_loss_val = loss_val
+            mejor_epoca = epoch
+            mejores_pesos = [(c.W.copy(), c.b.copy()) for c in red if isinstance(c, CapaDensa)]
+
+        gradiente = (A_train - Y_train) / Y_train.shape[0]
         for capa in reversed(red[:-1]):
             gradiente = capa.backward(gradiente, learning_rate)
 
-    # === Evaluación en test ===
-    A2_test = predecir(red, X_test)
-    pred_test = np.argmax(A2_test, axis=1)
+        if epoch >= PACIENCIA_EARLY_STOP:
+            loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
+            mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
+            if mejora_relativa < MEJORA_MINIMA_RELATIVA:
+                print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
+                      f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
+                break
+    else:
+        print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
+
+    epocas_entrenadas = len(historial_loss_train)
+
+    for capa, (W, b) in zip([c for c in red if isinstance(c, CapaDensa)], mejores_pesos):
+        capa.W, capa.b = W, b
+    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+
+    # === Única vez que se toca el conjunto de test, ya con la red entrenada (pesos del mínimo
+    # de validación, no los de la última época entrenada) ===
+    A_test = predecir(red, X_test)
+    pred_test = np.argmax(A_test, axis=1)
     accuracy_test = float(np.mean(pred_test == Y_num_test))
+    loss_test = float(-np.mean(np.sum(Y_test * np.log(A_test + 1e-15), axis=1)))
 
     matriz_confusion = np.zeros((3, 3), dtype=int)
     for real, pred in zip(Y_num_test, pred_test):
         matriz_confusion[real, pred] += 1
 
     metrics = {
-        "epochs": epochs,
-        "loss_train_final": float(historial_loss_train[-1]),
-        "loss_test_final": float(historial_loss_test[-1]),
+        "epochs_configuradas": epochs,
+        "epochs_entrenadas": epocas_entrenadas,
+        "epoca_mejor_val": mejor_epoca + 1,
+        "loss_train_final": float(historial_loss_train[mejor_epoca]),
+        "loss_val_final": float(mejor_loss_val),
+        "loss_test_final": loss_test,
         "accuracy_test": accuracy_test,
         "n_train": int(len(X_train)),
+        "n_val": int(len(X_val)),
         "n_test": int(len(X_test)),
         "matriz_confusion": matriz_confusion.tolist(),
         "clases": NOMBRES_CLASES,
@@ -123,10 +177,11 @@ def main() -> None:
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
     print(f"Accuracy test: {accuracy_test:.4f} ({len(X_test)} clientes de test)")
 
-    # === Gráfico 1: curva de aprendizaje ===
+    # === Gráfico 1: curva de aprendizaje (train + validación, que es lo que decide cuándo
+    # parar) ===
     plt.figure(figsize=(6, 4))
     plt.plot(historial_loss_train, color="purple", label="Train")
-    plt.plot(historial_loss_test, color="orange", linestyle="--", label="Test")
+    plt.plot(historial_loss_val, color="orange", linestyle="--", label="Validación")
     plt.title("Curva de aprendizaje (Entropía Cruzada)", fontweight="bold")
     plt.xlabel("Épocas")
     plt.ylabel("Pérdida")
@@ -149,12 +204,13 @@ def main() -> None:
 
     plt.figure(figsize=(6, 5))
     plt.contourf(xx, yy, frontera, alpha=0.5, cmap="brg")
-    plt.scatter(X_train_raw[Y_num[indices_train] == 0, 0], X_train_raw[Y_num[indices_train] == 0, 1],
-                color="red", label="Navegadores (train)", edgecolors="k")
-    plt.scatter(X_train_raw[Y_num[indices_train] == 1, 0], X_train_raw[Y_num[indices_train] == 1, 1],
-                color="green", label="Ocasionales (train)", edgecolors="k")
-    plt.scatter(X_train_raw[Y_num[indices_train] == 2, 0], X_train_raw[Y_num[indices_train] == 2, 1],
-                color="blue", label="VIPs (train)", edgecolors="k")
+    for clase, nombre in enumerate(NOMBRES_CLASES):
+        mask_train = Y_num[indices_train] == clase
+        plt.scatter(X_train_raw[mask_train, 0], X_train_raw[mask_train, 1],
+                    color=COLORES_CLASES[clase], label=f"{nombre} (train)", edgecolors="k")
+    plt.scatter(X_val_raw[:, 0], X_val_raw[:, 1],
+                c=[COLORES_CLASES[c] for c in Y_num[indices_val]],
+                marker="^", s=70, edgecolors="k", label="Validación")
     plt.scatter(X_test_raw[:, 0], X_test_raw[:, 1], color="yellow", marker="*", s=140,
                 edgecolors="k", label="Test (nunca visto)", zorder=5)
     plt.title("Zonas de clientes aprendidas por la red", fontweight="bold")

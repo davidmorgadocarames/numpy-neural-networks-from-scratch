@@ -1,11 +1,12 @@
 {
   "epochs_configuradas": 3000,
-  "epochs_entrenadas": 693,
+  "epochs_entrenadas": 1811,
+  "epoca_mejor_val": 1804,
   "ventana_horas": 3,
-  "loss_train_final": 0.004487297747176172,
-  "loss_val_final": 0.006309627707314927,
-  "loss_test_final": 0.004514834932386651,
-  "mae_test_celsius": 0.8990546815293184,
+  "loss_train_final": 0.0048038998437995835,
+  "loss_val_final": 0.006748637795495379,
+  "loss_test_final": 0.0049377306610662,
+  "mae_test_celsius": 0.8756203362867029,
   "n_train": 113,
   "n_val": 38,
   "n_test": 38
