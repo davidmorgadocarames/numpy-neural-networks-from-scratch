@@ -43,6 +43,14 @@ aquí), entrenado sobre 113 horas, validado sobre 38 y evaluado sobre 38 horas d
 - **MAE en test: 0.88 °C** — próximo al ruido de fondo (0.7 °C de desviación), indicando que
   la red aprendió el patrón cíclico real y no solo está memorizando.
 
+**Contra qué comparar ese 0.88 °C**: el ruido de fondo (0.7 °C) es el suelo teórico -- ningún
+modelo puede bajar de ahí de forma sistemática, porque esa parte del error es aleatoria por
+construcción. Pero el techo también importa, y para eso hace falta un baseline ingenuo, no solo
+el suelo de ruido: predecir que la hora siguiente va a ser igual a la última hora observada
+(baseline de persistencia, sin entrenar nada) da **MAE 1.33 °C** en este mismo conjunto de
+test -- el error de la red (0.88 °C) es un 34% menor, así que sí está aprendiendo el ciclo
+día/noche, no solo copiando el último valor.
+
 ![Curva de aprendizaje](results/learning_curve.png)
 
 **Predicción vs realidad en test**: eje X en horas reales desde el inicio del test (no un

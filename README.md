@@ -163,9 +163,10 @@ proyecto.
 El número de épocas configurado en cada proyecto (`epochs` / `EPOCHS_MAX`) es un **techo de
 seguridad**, no un objetivo: existe solo para que el bucle no corra indefinidamente si nunca
 converge. La cifra real de cuánto entrenar la decide la validación. Que un proyecto agote ese
-techo sin que el early stopping llegue a activarse (02, 03, 06, 08-baseline) es tan válido como
-que se corte a mitad de camino (04, 05, 07, 08-augmented) — ambos son el mecanismo funcionando,
-no una carencia que justificar.
+techo sin que el early stopping llegue a activarse (02, 03, 06, y las tres variantes de 08 a
+muestra reducida -- baseline, augmented y augmented_sin_flip) es tan válido como que se corte a
+mitad de camino (04, 05, 07, y las tres variantes de 08 a dataset completo) — ambos son el
+mecanismo funcionando, no una carencia que justificar.
 
 ### Checkpoint del mejor punto de validación
 

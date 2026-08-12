@@ -2,16 +2,22 @@
 Clasificador de 3 brazos de una espiral (NumPy puro) -- el benchmark clásico para demostrar
 que una red con capas ocultas puede aprender fronteras de decisión curvas que ningún modelo
 lineal podría representar. Red modular profunda (Densa -> LeakyReLU -> Densa -> LeakyReLU ->
-Densa -> Softmax), 2 capas ocultas de 64 neuronas.
+Densa -> Softmax), 2 capas ocultas de 64 neuronas -- una arquitectura generosa, no una necesaria:
+con el mismo split y metodología, una sola capa oculta de solo 8 neuronas (51 parámetros frente
+a los ~9k de esta red) ya alcanza 98.89% en test, un punto por encima. Se mantiene la versión
+profunda porque el objetivo del proyecto es mostrar cómo se encadenan varias capas ocultas
+(forward/backward a través de dos capas densas, no una), no exprimir la accuracy de este
+problema concreto -- ver README para la comparación completa.
 
 Split en TRES partes -- 60% train / 20% validación / 20% test, estratificado por brazo -- con
 early stopping mirando el error de VALIDACIÓN. Es un cambio necesario, no cosmético: con solo
-train/test y una red de ~9k parámetros, este problema sobreajusta a partir de la época ~1047
-(el error de test empieza a subir mientras el de train sigue bajando) y sin un conjunto de
-validación separado no hay forma legítima de detectar ese punto de corte sin espiar el propio
-test -- parar mirando el test y luego reportar accuracy sobre ese mismo test sería trampa. Con
-validación, el early stopping decide cuándo parar sin haber tocado el test, que se evalúa una
-única vez al final ya con la red congelada.
+train/test y una red de ~9k parámetros, este problema sobreajusta a partir de la época ~2770
+(el error de test toca mínimo ahí y sube hasta el final mientras el de train sigue bajando) y
+sin un conjunto de validación separado no hay forma legítima de detectar ese punto de corte sin
+espiar el propio test -- parar mirando el test y luego reportar accuracy sobre ese mismo test
+sería trampa. Con validación, el early stopping decide cuándo parar sin haber tocado el test,
+que se evalúa una única vez al final ya con la red congelada. (En esta ejecución concreta la
+validación no llega a detectar el repunte a tiempo -- ver README para el hallazgo completo.)
 
 Uso: python spiral_classifier.py
 """

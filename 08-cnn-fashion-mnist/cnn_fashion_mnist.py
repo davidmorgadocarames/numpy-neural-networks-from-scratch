@@ -5,18 +5,19 @@ TensorFlow, sin Keras, sin PyTorch, ni siquiera para la parte convolucional (ver
 más avanzado de este repo: los 7 anteriores usan solo capas densas, este añade convoluciones,
 pooling y dropout desde cero.
 
-La red se entrena **dos veces con la misma arquitectura y los mismos pesos iniciales**: una
-vez tal cual (*baseline*) y otra con data augmentation (flip horizontal + rotación + zoom +
+La red se entrena **tres veces con la misma arquitectura y los mismos pesos iniciales**: tal
+cual (*baseline*), con data augmentation completa (flip horizontal + rotación + zoom +
 desplazamiento aleatorios, reimplementados a mano en `capas_cnn.augmentar_lote` -- ver ese
-módulo para el porqué de cada elección), para medir el efecto real de la técnica en vez de
-solo mencionarla.
+módulo para el porqué de cada elección) y con la misma augmentation pero sin flip
+(*augmented_sin_flip*, prob_flip=0.0), para aislar si el flip específicamente ayuda o
+perjudica en vez de asumirlo -- ver README para el estudio completo.
 
 Split en tres partes -- train / validación / test -- estratificado por clase. El early
-stopping de AMBOS entrenamientos (baseline y augmented) decide cuándo parar mirando el loss de
-VALIDACIÓN, nunca el de test: el test se evalúa una única vez por versión, después de que el
-entrenamiento ya ha terminado, así que la comparación final baseline vs augmented es limpia
-por construcción -- no hace falta igualar manualmente ningún criterio de parada entre las dos
-versiones, cada una para cuando su propia validación deja de mejorar.
+stopping de las TRES variantes decide cuándo parar mirando el loss de VALIDACIÓN, nunca el de
+test: el test se evalúa una única vez por versión, después de que el entrenamiento ya ha
+terminado, así que la comparación final entre variantes es limpia por construcción -- no hace
+falta igualar manualmente ningún criterio de parada, cada una para cuando su propia validación
+deja de mejorar.
 
 Se usa Fashion-MNIST en lugar de MNIST porque es lo bastante difícil como para justificar
 convoluciones (los dígitos de MNIST se resuelven casi igual de bien con una red densa) y no

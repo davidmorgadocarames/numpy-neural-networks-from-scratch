@@ -1,9 +1,10 @@
 # 06 — Zonas de espirales: frontera de decisión curva
 
-El benchmark clásico para demostrar que una red con suficientes capas ocultas puede aprender
-fronteras de decisión **curvas**, no solo rectas — 3 brazos de una espiral entrelazados, que
-ningún clasificador lineal podría separar. Red modular profunda: 2 → 64 (LeakyReLU) → 64
-(LeakyReLU) → 3 (Softmax).
+El benchmark clásico para demostrar que una red con capas ocultas puede aprender fronteras de
+decisión **curvas**, no solo rectas — 3 brazos de una espiral entrelazados, que ningún
+clasificador lineal podría separar. Red modular profunda: 2 → 64 (LeakyReLU) → 64 (LeakyReLU) →
+3 (Softmax) — una arquitectura generosa para este problema, no una necesaria: más abajo se
+compara contra una sola capa oculta de 8 neuronas, que iguala o supera el resultado.
 
 El generador del dataset (`r`/`theta` con ruido gaussiano) está adaptado del ["minimal neural
 network case study" de CS231n](https://cs231n.github.io/neural-networks-case-study/) (Stanford),
@@ -65,6 +66,29 @@ más y con menos margen, y es justo ahí donde caen los 2 puntos de test mal cla
 del centro, donde los brazos están claramente separados, no hay ningún error.
 
 ![Matriz de confusión](results/confusion_matrix.png)
+
+## ¿Hacía falta una red tan grande?
+
+La arquitectura del proyecto (2 → 64 → 64 → 3, ~9k parámetros) es deliberadamente generosa: el
+objetivo es mostrar cómo se encadenan varias capas ocultas (dos pasadas forward/backward, no
+una), no encontrar la red más pequeña posible para este problema. Con el mismo split, semilla y
+metodología (early stopping + checkpoint sobre validación), una red mucho más pequeña -- una
+sola capa oculta de 8 neuronas, **51 parámetros** frente a los ~9k de la versión profunda --
+alcanza:
+
+| Arquitectura | Parámetros | Accuracy en test |
+|---|---|---|
+| 2 → 64 → 64 → 3 (profunda, la del proyecto) | ~9.000 | 97.78% (88/90) |
+| 2 → 8 → 3 (una sola capa oculta) | 51 | **98.89% (89/90)** |
+
+La red pequeña no solo iguala, sino que sale un punto por delante -- aunque con un test de solo
+90 puntos esa diferencia es literalmente 1 imagen (89/90 frente a 88/90), así que no hay que
+leerla como "la red pequeña es mejor" en un sentido estadístico fuerte, sino como evidencia de
+que **este problema concreto no necesita tanta capacidad**: 3 brazos de espiral con ruido
+moderado es una frontera de decisión curva, pero no especialmente compleja, y 8 neuronas en una
+capa ya bastan para separarla bien. La arquitectura profunda de este proyecto es una elección
+pedagógica (demostrar el patrón de varias capas encadenadas), no una respuesta a que el
+problema lo exigiera.
 
 ## Reproducir
 

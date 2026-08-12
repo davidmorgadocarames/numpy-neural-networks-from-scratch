@@ -120,7 +120,7 @@ def main() -> None:
         description=(
             "Dibuja un dígito del 0 al 9, centrado y grande, y pulsa 'Submit'. Red densa "
             "(784->128->10, LeakyReLU+Softmax) implementada a mano en NumPy, sin frameworks "
-            "de deep learning, ~91.7% accuracy en test."
+            "de deep learning, ~89.7% accuracy en test."
         ),
         live=False,
     )

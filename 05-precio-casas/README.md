@@ -23,6 +23,35 @@ y 30 de test (20%, evaluadas una sola vez):
 
 ![Curva de aprendizaje](results/learning_curve.png)
 
+## ¿Hacía falta una red neuronal para esto? Comparación con regresión lineal
+
+Los datos se generan con una fórmula exactamente lineal (precio = metros×1.500 +
+habitaciones×25.000 + 50.000 + ruido gaussiano), así que la pregunta honesta es si la red
+aporta algo frente al modelo más simple posible para este problema. Se ajustó una regresión
+lineal ordinaria (mínimos cuadrados, `np.linalg.lstsq`, sin ninguna capa ni descenso de
+gradiente) sobre las mismas 90 casas de train, evaluada sobre las mismas 30 de test:
+
+| Modelo | MAE en test |
+|---|---|
+| Regresión lineal (OLS) | **10.583 €** |
+| Red neuronal (Densa → LeakyReLU → Densa) | 11.452 € |
+
+**La regresión lineal empata con la red -- de hecho la supera ligeramente** (869 € menos de
+error, un 7,6% mejor). Tiene sentido y no es un fallo del proyecto: la relación real es lineal,
+así que el estimador óptimo para datos lineales con ruido gaussiano aditivo es, precisamente,
+la regresión lineal (sus coeficientes ajustados -- 1.505 €/m² y 24.345 €/habitación -- quedan a
+menos de un 3% de los reales, 1.500 y 25.000). La capa oculta de la red no tiene ninguna
+no-linealidad real que aprender aquí: en el mejor caso converge hacia la misma solución lineal,
+y en la práctica trae más parámetros que ajustar con solo 90 ejemplos sin ningún beneficio a
+cambio.
+
+Este es el resultado honesto, no uno maquillado para "vender" la red: el objetivo de este
+proyecto es demostrar el mecanismo de descenso de gradiente con backpropagation y una
+metodología de train/validación/test correcta sobre un problema de regresión con overfitting
+real que detectar (ver la sección de early stopping abajo) -- no batir a un baseline lineal en
+un problema que es literalmente lineal por construcción. Si el objetivo fuera solo minimizar el
+error en este dataset concreto, el modelo correcto sería la regresión lineal, no la red.
+
 ### Early stopping: parar en cuanto deja de mejorar de verdad
 
 Con 4000 épocas configuradas (techo de seguridad, no un objetivo), el entrenamiento **corta en
