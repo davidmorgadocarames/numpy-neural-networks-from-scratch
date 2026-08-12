@@ -5,6 +5,11 @@ fronteras de decisión **curvas**, no solo rectas — 3 brazos de una espiral en
 ningún clasificador lineal podría separar. Red modular profunda: 2 → 64 (LeakyReLU) → 64
 (LeakyReLU) → 3 (Softmax).
 
+El generador del dataset (`r`/`theta` con ruido gaussiano) está adaptado del ["minimal neural
+network case study" de CS231n](https://cs231n.github.io/neural-networks-case-study/) (Stanford),
+material del curso escrito por Andrej Karpathy — la red, el entrenamiento, el split y todo lo
+demás de este proyecto son propios.
+
 ## Validación y early stopping: un hallazgo metodológico
 
 Con solo train/test (80%/20%) y esta red de ~9k parámetros, el problema sobreajusta a partir

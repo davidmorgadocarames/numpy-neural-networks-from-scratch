@@ -44,6 +44,10 @@ MEJORA_MINIMA_RELATIVA = 0.005
 def main() -> None:
     np.random.seed(SEED)
 
+    # Generador del dataset de espiral: adaptado del "minimal neural network case study" de
+    # CS231n (Stanford), material del curso escrito por Andrej Karpathy --
+    # https://cs231n.github.io/neural-networks-case-study/ -- mismo patrón r/theta con ruido
+    # gaussiano, renombrado a español y con parámetros como constantes en vez de literales.
     X = np.zeros((N_POR_BRAZO * K_CLASES, 2))
     Y_num = np.zeros(N_POR_BRAZO * K_CLASES, dtype="uint8")
     for i in range(K_CLASES):

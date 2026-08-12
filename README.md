@@ -95,8 +95,12 @@ sigue por detrás del baseline (ver README del proyecto para el análisis comple
 ## El mini-framework — `capas.py`
 
 Las clases `CapaDensa`, `ActivacionLeakyReLU`, `ActivacionSigmoide` y `ActivacionSoftmax` se
-escriben **una sola vez** en [`capas.py`](capas.py) y se reutilizan en los 7 primeros
-proyectos, en vez de copiar y pegar el mismo bucle de entrenamiento cada vez. El proyecto 08
+escriben **una sola vez** en [`capas.py`](capas.py) y se reutilizan en 6 de los 8 proyectos (01
+y 03 a 07), en vez de copiar y pegar el mismo bucle de entrenamiento cada vez. El 02 es una
+excepción deliberada: es una sola neurona lineal sin capas ocultas ni activaciones, así que
+implementa `A = X·W + b` directamente con NumPy en vez de instanciar `CapaDensa` -- reutilizar
+el framework ahí habría escondido precisamente el cálculo mínimo que ese proyecto existe para
+mostrar. El proyecto 08
 amplía el mismo patrón con capas convolucionales propias en
 [`08-cnn-fashion-mnist/capas_cnn.py`](08-cnn-fashion-mnist/capas_cnn.py) (`CapaConv2D`,
 `CapaMaxPool2D`, `CapaFlatten`, `CapaDropout`), reutilizando `CapaDensa` y las activaciones de

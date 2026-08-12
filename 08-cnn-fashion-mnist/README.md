@@ -185,53 +185,63 @@ contorno es toda la información disponible. Con augmentation la confusión se d
 respectivamente en el baseline — la augmentation geométrica parece difuminar precisamente los
 detalles de solapa/cuello que distinguen una camisa de un jersey o un abrigo.
 
-## ¿Ayuda o perjudica el flip horizontal? Estudio con y sin flip, a dos escalas
+## ¿Explica el flip horizontal por qué la augmentation va peor que el baseline?
 
 La augmentation de este proyecto combina 4 transformaciones (`capas_cnn.augmentar_lote`): flip
 horizontal, rotación, zoom y desplazamiento. A diferencia de dígitos manuscritos, varias
 prendas de Fashion-MNIST no son simétricas en la práctica -- zapatillas, sandalias y botines
-tienen una orientación de puntera concreta -- así que tenía sentido dudar si el flip
-específicamente ayuda o perjudica, en vez de asumirlo. Se entrenó una tercera variante,
-`augmented_sin_flip` (prob_flip=0.0, mismo resto de augmentation), con la misma semilla de
-augmentation que `augmented` -- como `augmentar_lote` consume los mismos números aleatorios en
-el mismo orden con independencia de `prob_flip`, las rotaciones/zooms/desplazamientos son
-idénticos entre ambas variantes y la única diferencia real es si se aplica el flip.
+tienen una orientación de puntera concreta -- así que tenía sentido comprobar si el flip
+específicamente es responsable de que `augmented` rinda peor que `baseline`, en vez de asumirlo.
+Se entrenó una tercera variante, `augmented_sin_flip` (prob_flip=0.0, mismo resto de
+augmentation), con la misma semilla de augmentation que `augmented` -- como `augmentar_lote`
+consume los mismos números aleatorios en el mismo orden con independencia de `prob_flip`, las
+rotaciones/zooms/desplazamientos son idénticos entre ambas variantes y la única diferencia real
+es si se aplica el flip.
 
 | | Baseline | Augmented (flip=0.5) | Augmented sin flip (flip=0.0) |
 |---|---|---|---|
-| Muestra reducida (2.400 train) | 79.00% | 74.80% | **75.70%** |
-| Dataset completo (42.000 train) | 88.34% | **85.24%** | 84.85% |
+| Muestra reducida (2.400 train) | 79.00% | 74.80% | 75.70% |
+| Dataset completo (42.000 train) | 88.34% | 85.24% | 84.85% |
 
-La respuesta no es un simple "ayuda" o "perjudica": **a escala reducida, quitar el flip mejora
-el resultado** (+0,90 puntos); **a escala completa, el flip ayuda ligeramente** (+0,39 puntos)
--- el efecto neto se invierte entre las dos escalas, y en ambos casos la diferencia es pequeña
-frente a la brecha real (la que separa augmented de baseline). Mirar solo la accuracy total
-esconde lo que sí es un patrón consistente por clase:
+**El flip no explica la brecha.** `augmented_sin_flip` sigue perdiendo frente al baseline en
+las dos escalas (75.70% < 79.00%; 84.85% < 88.34%) -- si el flip fuera la causa real de que la
+augmentation vaya peor, quitarlo debería cerrar esa brecha, y no la cierra en ninguna de las
+dos. El movimiento que sí produce quitar el flip es pequeño y **cambia de signo entre escalas**
+(+0,90 puntos a escala reducida, −0,39 a escala completa) -- del mismo orden que el ruido
+esperable entre ejecuciones (semilla, orden de batches), no una señal consistente sobre la que
+construir una explicación.
 
-- **"Camisa" es mucho peor con flip, en las dos escalas**: 13% con flip vs 23% sin flip
-  (muestra reducida); 41,1% con flip vs 48,7% sin flip (dataset completo). El flip agrava
-  justo la confusión que ya era el punto más débil del modelo (ver más arriba) -- probablemente
-  porque muchas camisas de Fashion-MNIST llevan el bolsillo, la solapa o el estampado en un
-  lado concreto, y el flip le quita a la red esa asimetría como pista.
-- **"Jersey" es mucho mejor con flip, en las dos escalas**: 75% con flip vs 52% sin flip
-  (muestra reducida); 79,2% con flip vs 70,9% sin flip (dataset completo). Aquí el flip parece
-  aportar variedad útil sin destruir ninguna asimetría relevante (un jersey es visualmente casi
-  simétrico).
-- **El resto de clases (incluidas las asimétricas por diseño -- Sandalia, Zapatilla, Botín)
-  no muestran una dirección consistente entre las dos escalas**: por ejemplo Zapatilla mejora
-  sin flip a escala reducida (86% vs 84%) pero empeora sin flip a escala completa (89,9% vs
-  94,6%) -- el signo se invierte, lo que apunta a ruido de muestra (100 imágenes de test por
-  clase a escala reducida, 1.400 a escala completa, pero aun así el efecto del flip en estas
-  clases es pequeño frente a la varianza entre ejecuciones) más que a un efecto real y estable.
+**La causa real de por qué la augmentation completa rinde peor que el baseline sigue abierta.**
+La sospechosa principal, coherente con el punto 1 de la sección "Por qué tiene sentido" más
+arriba, es el presupuesto de épocas: cada época de augmentation optimiza sobre una
+transformación distinta por imagen, un objetivo más ruidoso que el baseline, y con early
+stopping cortando en cuanto la validación deja de mejorar puede no haber margen para que el
+beneficio de generalización llegue a compensar ese coste de optimización. No se ha verificado
+directamente (haría falta, por ejemplo, entrenar con más paciencia o un techo de épocas más
+alto y comprobar si el gap se cierra), así que se deja como hipótesis, no como conclusión. Un
+resultado negativo sin explicar del todo es más honesto que uno explicado a medias.
 
-**Conclusión honesta**: el flip horizontal no es universalmente bueno ni malo para Fashion-
-MNIST con esta arquitectura -- tiene un efecto real, grande y consistente en al menos una
-clase concreta (perjudica a "Camisa") y el efecto contrario en otra ("Jersey"), pero no hay
-una regla simple tipo "las prendas asimétricas se ven perjudicadas por el flip" que se sostenga
-al mirar sandalias/zapatillas/botines en las dos escalas. Si el objetivo fuera maximizar
-accuracy en una clase concreta (p. ej. "Camisa"), desactivar el flip sería una palanca real a
-probar; como métrica global, el efecto del flip es del mismo orden que el ruido entre
-ejecuciones.
+**Lo que el flip sí tiene es un efecto real por clase, consistente en las dos escalas -- aunque
+no sea lo que explica el resultado agregado**:
+
+- **"Camisa" es mucho peor con flip**: 13% con flip vs 23% sin flip (muestra reducida); 41,1%
+  con flip vs 48,7% sin flip (dataset completo). El flip agrava justo la confusión que ya era
+  el punto más débil del modelo (ver más arriba) -- probablemente porque muchas camisas de
+  Fashion-MNIST llevan el bolsillo, la solapa o el estampado en un lado concreto, y el flip le
+  quita a la red esa asimetría como pista.
+- **"Jersey" es mucho mejor con flip**: 75% con flip vs 52% sin flip (muestra reducida); 79,2%
+  con flip vs 70,9% sin flip (dataset completo). Aquí el flip parece aportar variedad útil sin
+  destruir ninguna asimetría relevante (un jersey es visualmente casi simétrico).
+- **El resto de clases (incluidas las asimétricas por diseño -- Sandalia, Zapatilla, Botín) no
+  muestran una dirección consistente entre las dos escalas**: por ejemplo Zapatilla mejora sin
+  flip a escala reducida (86% vs 84%) pero empeora sin flip a escala completa (89,9% vs 94,6%)
+  -- el signo se invierte, lo que apunta a ruido más que a un efecto real y estable.
+
+Que el efecto en "Camisa" (negativo) y en "Jersey" (positivo, de magnitud parecida) tiendan a
+cancelarse es probablemente la razón de que el efecto del flip sobre la accuracy agregada salga
+tan pequeño y tan poco estable entre escalas -- pero esa cancelación es una coincidencia
+aritmética entre dos clases concretas, no evidencia de que el flip sea "neutro" en general, ni
+tampoco la explicación de por qué la augmentation completa va peor que el baseline.
 
 ## Reproducir
 
@@ -255,3 +265,7 @@ python cnn_fashion_mnist_full.py   # dataset completo, mini-batch (~10,8 min: 33
   menor pero no nula.
 - Sin ajuste de hiperparámetros de la augmentation (ángulo, zoom, desplazamiento) — se
   usaron valores razonables por intuición, no se buscó la combinación óptima.
+- El estudio con/sin flip descarta el flip como causa de que `augmented` rinda peor que
+  `baseline`, pero no identifica la causa real -- la hipótesis del presupuesto de épocas (ver
+  "¿Explica el flip horizontal...?" arriba) no se ha puesto a prueba entrenando con más
+  paciencia o más épocas máximas. Queda como trabajo futuro, no como conclusión.
