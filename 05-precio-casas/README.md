@@ -17,7 +17,7 @@ confusión.
 De las 150 casas: 90 de entrenamiento (60%), 30 de validación (20%, decide el early stopping)
 y 30 de test (20%, evaluadas una sola vez):
 
-- **MAE en test: 11.452 €** — coherente con el ruido gaussiano (desviación 15.000 €) añadido
+- **MAE en test: 10.299 €** — coherente con el ruido gaussiano (desviación 15.000 €) añadido
   deliberadamente a los datos sintéticos, lo que indica que la red aprendió la relación real
   precio = f(metros, habitaciones) tan bien como el ruido de los datos permite.
 
@@ -33,30 +33,35 @@ gradiente) sobre las mismas 90 casas de train, evaluada sobre las mismas 30 de t
 
 | Modelo | MAE en test |
 |---|---|
-| Regresión lineal (OLS) | **10.583 €** |
-| Red neuronal (Densa → LeakyReLU → Densa) | 11.452 € |
+| Regresión lineal (OLS) | 11.470 € |
+| Red neuronal (Densa → LeakyReLU → Densa) | **10.299 €** |
 
-**La regresión lineal empata con la red -- de hecho la supera ligeramente** (869 € menos de
-error, un 7,6% mejor). Tiene sentido y no es un fallo del proyecto: la relación real es lineal,
-así que el estimador óptimo para datos lineales con ruido gaussiano aditivo es, precisamente,
-la regresión lineal (sus coeficientes ajustados -- 1.505 €/m² y 24.345 €/habitación -- quedan a
-menos de un 3% de los reales, 1.500 y 25.000). La capa oculta de la red no tiene ninguna
-no-linealidad real que aprender aquí: en el mejor caso converge hacia la misma solución lineal,
-y en la práctica trae más parámetros que ajustar con solo 90 ejemplos sin ningún beneficio a
-cambio.
+**Las dos están prácticamente empatadas** (1.171 € de diferencia, ~10%) — y, como se ve en la
+sección de robustez más abajo, esa diferencia es mucho menor que la varianza que introduce por
+sí sola la semilla de split/inicialización (desviación típica ±1.561 € sobre 10 semillas): en
+otro reparto de los datos perfectamente podría ganar la regresión lineal, como pasaba en una
+versión anterior de este análisis. No hay que leer "quién gana en este split concreto" como una
+conclusión fuerte. Lo que sí es sólido es que ambas están en el mismo orden de magnitud, lo cual
+tiene sentido y no es un fallo del proyecto: la relación real es lineal, así que el estimador
+óptimo para datos lineales con ruido gaussiano aditivo es, precisamente, la regresión lineal
+(sus coeficientes ajustados -- 1.511 €/m² y 24.016 €/habitación -- quedan cerca de los reales,
+1.500 y 25.000). La capa oculta de la red no tiene ninguna no-linealidad real que aprender
+aquí: en el mejor caso converge hacia la misma solución lineal, y en la práctica trae más
+parámetros que ajustar con solo 90 ejemplos sin ninguna ventaja estructural a cambio.
 
 Este es el resultado honesto, no uno maquillado para "vender" la red: el objetivo de este
 proyecto es demostrar el mecanismo de descenso de gradiente con backpropagation y una
 metodología de train/validación/test correcta sobre un problema de regresión con overfitting
 real que detectar (ver la sección de early stopping abajo) -- no batir a un baseline lineal en
 un problema que es literalmente lineal por construcción. Si el objetivo fuera solo minimizar el
-error en este dataset concreto, el modelo correcto sería la regresión lineal, no la red.
+error en este dataset concreto, cualquiera de los dos modelos sirve igual de bien; la ventaja de
+la red sería aprender relaciones no lineales que aquí, por construcción, no existen.
 
 ### Early stopping: parar en cuanto deja de mejorar de verdad
 
 Con 4000 épocas configuradas (techo de seguridad, no un objetivo), el entrenamiento **corta en
-la época 2362** — el error de **validación** lleva 200 épocas sin bajar al menos un 0.5%, así
-que seguir no aporta nada. Los pesos usados para evaluar son los de la época **2361**, el
+la época 3225** — el error de **validación** lleva 200 épocas sin bajar al menos un 0.5%, así
+que seguir no aporta nada. Los pesos usados para evaluar son los de la época **3222**, el
 mínimo real de `loss_val`, restaurado por checkpoint (ver "Checkpoint del mejor punto de
 validación" en el [README raíz](../README.md)) — prácticamente el mismo punto que el de corte,
 porque aquí el error de validación deja de mejorar de forma bastante abrupta.
@@ -82,6 +87,27 @@ real — si el punto tiene un color parecido al fondo que pisa, la red acertó.
 conjunto de test:
 
 ![Predicho vs real](results/predicted_vs_real.png)
+
+## Robustez frente a la semilla
+
+Repitiendo el entrenamiento con **10 pares (seed_split, seed_modelo) sorteados de forma
+independiente** (`python run_seed_sweep.py --solo 05-casas`, ver [README raíz](../README.md)),
+manteniendo siempre las mismas 150 casas (`SEED_DATOS` fijo):
+
+| Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
+|---|---|---|---|---|---|
+| MAE en test (€) | 12.190 | 1.561 | 10.326 | 15.090 | 10 |
+
+![Robustez frente a la semilla](results/seed_sweep.png)
+
+![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+
+El MAE de la ejecución canónica documentada arriba (10.299 €) está en el extremo bueno de ese
+rango, no en
+la mediana — con solo 30 casas de test, qué 30 concretas caen ahí pesa bastante en el resultado
+final. Es la razón por la que la comparación con la regresión lineal de la sección anterior no
+se puede leer como un veredicto definitivo: la diferencia entre ambos modelos (~1.171 €) es
+menor que la propia desviación típica de la red frente a la semilla (1.561 €).
 
 ## Reproducir
 

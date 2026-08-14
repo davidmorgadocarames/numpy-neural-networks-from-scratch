@@ -18,6 +18,16 @@ las capas -- por eso `predecir_cnn()` puede tratarlas todas por igual sin casos 
 import numpy as np
 
 
+def _normal(rng, shape):
+    """randn de np.random o standard_normal de un Generator -- ver capas.py, misma idea:
+    rng=None conserva el comportamiento legacy (estado global de np.random)."""
+    return rng.standard_normal(shape) if rng is not None else np.random.randn(*shape)
+
+
+def _random01(rng, shape):
+    return rng.random(shape) if rng is not None else np.random.rand(*shape)
+
+
 def im2col(X, kh, kw, stride=1):
     """Reorganiza cada ventana kh x kw de la imagen en una fila, para poder convolucionar con
     una sola multiplicación de matrices. Técnica estándar (usada internamente por
@@ -54,11 +64,13 @@ class CapaConv2D:
     im2col + multiplicación de matrices. W tiene forma (kh, kw, canales_entrada,
     canales_salida)."""
 
-    def __init__(self, kh, kw, canales_entrada, canales_salida, stride=1):
+    def __init__(self, kh, kw, canales_entrada, canales_salida, stride=1, rng=None):
         self.kh, self.kw, self.stride = kh, kw, stride
         # Inicialización He, igual que CapaDensa en capas.py: evita que las activaciones
         # exploten o se desvanezcan según el número de entradas por neurona (aquí, kh*kw*C_in).
-        self.W = np.random.randn(kh, kw, canales_entrada, canales_salida) * np.sqrt(
+        # rng=None mantiene el comportamiento legacy; con un Generator, la inicialización
+        # queda controlada por seed_modelo en vez del estado global de np.random.
+        self.W = _normal(rng, (kh, kw, canales_entrada, canales_salida)) * np.sqrt(
             2.0 / (kh * kw * canales_entrada)
         )
         self.b = np.zeros(canales_salida)
@@ -152,14 +164,15 @@ class CapaDropout:
     En evaluación (entrenando=False) no apaga nada -- por eso necesita ese argumento extra que
     el resto de capas no tiene."""
 
-    def __init__(self, tasa=0.3):
+    def __init__(self, tasa=0.3, rng=None):
         self.tasa = tasa
         self._mascara = None
+        self._rng = rng
 
     def forward(self, X, entrenando=True):
         if not entrenando:
             return X
-        self._mascara = (np.random.rand(*X.shape) > self.tasa) / (1.0 - self.tasa)
+        self._mascara = (_random01(self._rng, X.shape) > self.tasa) / (1.0 - self.tasa)
         return X * self._mascara
 
     def backward(self, dZ, learning_rate):

@@ -1,6 +1,8 @@
 {
+  "seed_split": 42,
+  "seed_modelo": 42,
   "epochs": 1000,
-  "loss_final": 0.0021163536890672742,
+  "loss_final": 0.0016368555163668256,
   "aciertos": "4/4",
   "predicciones": [
     {
@@ -9,7 +11,7 @@
         0
       ],
       "objetivo": 0,
-      "prediccion": 0.040476876438578495
+      "prediccion": 0.05509245278348195
     },
     {
       "entrada": [
@@ -17,7 +19,7 @@
         1
       ],
       "objetivo": 1,
-      "prediccion": 0.9401480104313047
+      "prediccion": 0.9650763020168736
     },
     {
       "entrada": [
@@ -25,7 +27,7 @@
         0
       ],
       "objetivo": 1,
-      "prediccion": 0.9648373895045765
+      "prediccion": 0.9666020758093341
     },
     {
       "entrada": [
@@ -33,7 +35,7 @@
         1
       ],
       "objetivo": 0,
-      "prediccion": 0.04475278467641257
+      "prediccion": 0.03410394065302856
     }
   ],
   "matriz_confusion": [

@@ -15,14 +15,14 @@ sabiendo qué hace realmente por debajo.
 
 | # | Proyecto | Tipo | Resultado en test |
 |---|---|---|---|
-| 01 | [Compuerta XOR](01-compuertas-logicas-xor/) | Clasificación binaria | 4/4 aciertos, loss 0.0021 |
-| 02 | [Celsius → Fahrenheit](02-celsius-fahrenheit/) | Regresión | MAE 0.0032 °F |
+| 01 | [Compuerta XOR](01-compuertas-logicas-xor/) | Clasificación binaria | 4/4 aciertos, loss 0.0016 |
+| 02 | [Celsius → Fahrenheit](02-celsius-fahrenheit/) | Regresión | MAE 0.0015 °F |
 | 03 | [Tipos de cliente](03-tipos-clientes/) | Clasificación (3 clases) | 100% accuracy |
 | 04 | [Temperatura día/noche](04-prediccion-temperatura-dia-noche/) | Regresión (serie temporal) | MAE 0.88 °C |
-| 05 | [Precio de una casa](05-precio-casas/) | Regresión | MAE 11.452 € |
+| 05 | [Precio de una casa](05-precio-casas/) | Regresión | MAE 10.299 € |
 | 06 | [Zonas de espirales](06-zonas-espirales/) | Clasificación (3 clases) | 97.78% accuracy |
-| 07 | [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/) | Clasificación (10 clases) | 89.67% accuracy (97.47% con dataset completo, ver abajo) |
-| 08 | [CNN Fashion-MNIST: baseline vs augmentation](08-cnn-fashion-mnist/) | Clasificación (10 clases) | 79.00% vs 74.80% (88.34% vs 85.24% con dataset completo, ver abajo) |
+| 07 | [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/) | Clasificación (10 clases) | 89.00% accuracy (97.46% con dataset completo, ver abajo) |
+| 08 | [CNN Fashion-MNIST: baseline vs augmentation](08-cnn-fashion-mnist/) | Clasificación (10 clases) | 79.50% vs 76.20% (88.84% vs 84.89% con dataset completo, ver abajo) |
 
 Los proyectos 07 y 08 tienen además una variante `_full` (`digit_classifier_full.py`,
 `cnn_fashion_mnist_full.py`) entrenada sobre el dataset **completo** (70.000 imágenes) por
@@ -45,12 +45,12 @@ arquitectura, forward, backward y resultado con la red real entrenándose en el 
 resto de gráficas y detalles están en el README de cada carpeta.
 
 ### 01 — [Compuerta XOR](01-compuertas-logicas-xor/)
-Clasificación binaria no separable linealmente. **4/4 aciertos, loss 0.0021.**
+Clasificación binaria no separable linealmente. **4/4 aciertos, loss 0.0016.**
 
 ![Frontera de decisión XOR](01-compuertas-logicas-xor/results/data_visualization.png)
 
 ### 02 — [Celsius → Fahrenheit](02-celsius-fahrenheit/)
-Regresión con una sola neurona lineal. **MAE 0.0032 °F en test** (prácticamente exacto).
+Regresión con una sola neurona lineal. **MAE 0.0015 °F en test** (prácticamente exacto).
 
 ![Entrenamiento: arquitectura, forward, backward y resultado](02-celsius-fahrenheit/results/training.gif)
 
@@ -65,7 +65,7 @@ Regresión con ventana deslizante sobre un ciclo día/noche con ruido. **MAE 0.8
 ![Predicción vs realidad](04-prediccion-temperatura-dia-noche/results/predicted_vs_real.png)
 
 ### 05 — [Precio de una casa](05-precio-casas/)
-Regresión con 2 variables (metros, habitaciones). **MAE 11.452 € en test.**
+Regresión con 2 variables (metros, habitaciones). **MAE 10.299 € en test.**
 
 ![Predicho vs real](05-precio-casas/results/predicted_vs_real.png)
 
@@ -75,7 +75,7 @@ Clasificación con frontera curva, red profunda de 2 capas ocultas. **97.78% acc
 ![Zonas de espirales](06-zonas-espirales/results/data_visualization.png)
 
 ### 07 — [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/)
-Clasificación de 10 clases + demo interactiva para dibujar y reconocer en vivo. **89.67%
+Clasificación de 10 clases + demo interactiva para dibujar y reconocer en vivo. **89.00%
 accuracy en test.**
 
 ![Entrenamiento: arquitectura, forward, backward y resultado](07-reconocimiento-digitos/results/training.gif)
@@ -84,8 +84,8 @@ accuracy en test.**
 
 ### 08 — [CNN sobre Fashion-MNIST: baseline vs data augmentation](08-cnn-fashion-mnist/)
 Convolución + pooling + dropout, también 100% NumPy (técnica im2col). Entrenada dos veces con
-los mismos pesos iniciales para medir el efecto real de la augmentation. **79.00% accuracy
-(baseline) vs 74.80% (con augmentation)** — con este presupuesto de épocas, la augmentation
+los mismos pesos iniciales para medir el efecto real de la augmentation. **79.50% accuracy
+(baseline) vs 76.20% (con augmentation)** — con este presupuesto de épocas, la augmentation
 sigue por detrás del baseline (ver README del proyecto para el análisis completo).
 
 ![Entrenamiento: arquitectura, forward, backward y resultado](08-cnn-fashion-mnist/results/training.gif)
@@ -204,6 +204,49 @@ un bug silencioso — no lanza ningún error, simplemente dispara la escala del 
 factor igual al número de batches por época, y el entrenamiento diverge o no converge en
 absoluto sin que quede claro por qué.
 
+## Metodología: por qué tres semillas (y por qué no varía la de los datos)
+
+Una única `np.random.seed(SEED)` mezclaba a la vez varias cosas distintas: qué datos existen,
+quién va a train/val/test, los pesos iniciales, y (en 08) qué neuronas apaga el dropout o qué
+transformación de augmentation le toca a cada imagen. Con una sola ejecución no había forma de
+saber si un resultado era representativo del método o si esa semilla concreta tuvo suerte. Cada
+proyecto separa ahora tres semillas independientes:
+
+- **`SEED_DATOS`** (constante, nunca es argumento): gobierna solo qué datos existen — en 02-06,
+  la generación sintética; en 01, 07 y 08 no aplica de verdad porque los datos son fijos (las 4
+  filas de XOR) o reales y descargados (MNIST/Fashion-MNIST).
+- **`seed_split`**: qué ejemplos van a train/validación/test (o, en 07/08, qué imágenes se
+  muestrean de la población real). Sin efecto en 01 (no hay split) ni en 04 (split cronológico,
+  no aleatorio).
+- **`seed_modelo`**: inicialización de pesos y, donde aplica, las máscaras de dropout, el orden
+  de los mini-batches y las transformaciones de data augmentation — todo lo que ocurre
+  *durante* el entrenamiento, no al definir el problema.
+
+**Por qué `SEED_DATOS` se queda fija.** Variar también la semilla de los datos respondería a una
+pregunta distinta y menos interesante: no "¿es robusto el entrenamiento a su propia
+aleatoriedad?", sino "¿cuánto cambia el resultado si cambio el problema?" — cada ejecución
+generaría un dataset sintético distinto, mezclando dos fuentes de varianza en un solo número (la
+sensibilidad del modelo a la inicialización/orden, que es lo que interesa medir, con el ruido de
+muestreo de un generador sintético arbitrario, que no lo es). Además rompería comparaciones que
+ya dependen de un dataset fijo — en 08, baseline/augmented/augmented_sin_flip solo son
+comparables de forma justa si entrenan sobre exactamente los mismos datos.
+
+**Cómo se mide la robustez.** [`run_seed_sweep.py`](run_seed_sweep.py) repite cada proyecto con
+N pares `(seed_split, seed_modelo)` sorteados de forma **independiente** entre sí (no atados, no
+en rejilla) — es una estimación Monte Carlo estándar de la media y la varianza del resultado
+frente a la semilla, no una técnica con nombre propio ni una rejilla cruzada: con semillas
+aleatorias no hay ninguna relación de orden entre "semilla 3" y "semilla 4" que una tabla o un
+mapa de calor pudiera mostrar con sentido, así que el resultado se reporta como
+media ± desviación típica (y a veces el rango completo, cuando hay valores atípicos que vale la
+pena señalar). N=10 en los proyectos 01-07; N=5 en el 08 porque cada ejecución de su CNN tarda
+varios minutos. [`plot_seed_sweep.py`](plot_seed_sweep.py) genera, a partir de esos datos, un
+dot plot con las N ejecuciones y su media (`seed_sweep.png`); `run_seed_sweep.py` genera además,
+en la misma pasada, una gráfica con las N curvas de pérdida de validación superpuestas en escala
+logarítmica (`seed_sweep_curvas.png`) — la forma de cada curva (dónde converge, si corta antes)
+es más informativa que una tabla época a época. Cada proyecto documenta su resultado en la
+sección "Robustez frente a la semilla" de su propio README, con los datos crudos en
+`results/metrics_seed_sweep.json`.
+
 ## Limitaciones generales
 
 - Todos los datasets son sintéticos o muestras reducidas (excepto MNIST en el proyecto 07 y
@@ -214,10 +257,10 @@ absoluto sin que quede claro por qué.
   con la técnica im2col, ver su README, en vez de con bucles Python por píxel); no escalaría a
   datasets grandes sin reescribir en un framework de producción (TensorFlow/Keras, PyTorch...).
 - Con datasets tan pequeños como los de 02 (30 ejemplos) o 05 (150), separar un tercer split
-  de validación dificulta aún más la varianza estadística de la cifra final: con otra semilla
-  de reparto, el MAE de test podría salir sensiblemente distinto. El objetivo de estos
-  proyectos es demostrar el mecanismo y la metodología correcta, no una estimación de error
-  robusta a gran escala.
+  de validación deja mucha varianza en la cifra final de test — **medido, no solo advertido**:
+  ver la sección "Robustez frente a la semilla" de cada README (02 llega a variar más de 10x
+  entre semillas, de 0.0014 a 0.18 °F de MAE). El objetivo de estos proyectos es demostrar el
+  mecanismo y la metodología correcta, no una estimación de error robusta a gran escala.
 
 ## Licencia
 

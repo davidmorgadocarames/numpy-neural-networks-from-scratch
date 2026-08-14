@@ -42,7 +42,6 @@ from sklearn.datasets import fetch_openml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from capas import ActivacionLeakyReLU, ActivacionSoftmax, CapaDensa, predecir
 
-SEED = 42
 RESULTS_DIR = Path(__file__).parent / "results_full"
 RESULTS_DIR.mkdir(exist_ok=True)
 FRAC_TRAIN, FRAC_VAL = 0.6, 0.2  # el resto (0.2) es test
@@ -68,16 +67,19 @@ def generar_batches(X, Y, batch_size, rng):
         yield X[idx_batch], Y[idx_batch]
 
 
-def main() -> None:
-    np.random.seed(SEED)
-
-    print("Descargando MNIST (sklearn fetch_openml)...")
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split y seed_modelo son independientes -- no hay SEED_DATOS porque MNIST es un
+    dataset real y fijo. seed_modelo gobierna tanto la inicialización de pesos como el orden
+    de los mini-batches (ambas son parte de "cómo se entrena", no de "qué datos existen").
+    Ver README para el análisis de robustez sobre múltiples semillas."""
+    if not quiet:
+        print("Descargando MNIST (sklearn fetch_openml)...")
     mnist = fetch_openml("mnist_784", version=1, as_frame=False, parser="liac-arff")
     X_puro, Y_puro = mnist.data, mnist.target.astype(int)
 
     # Split estratificado 60/20/20 usando TODOS los ejemplos de cada dígito (no un número fijo
     # igual por clase, para no descartar imágenes de las clases con más muestra).
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(seed_split)
     indices_train, indices_val, indices_test = [], [], []
     for digito in range(10):
         idx_digito = np.where(Y_puro == digito)[0]
@@ -107,10 +109,11 @@ def main() -> None:
     Y_val = np.zeros((len(X_val), 10))
     Y_val[np.arange(len(X_val)), Y_val_num] = 1
 
+    rng_modelo = np.random.default_rng(seed_modelo)
     red = [
-        CapaDensa(dim_entrada=784, dim_salida=128),
+        CapaDensa(dim_entrada=784, dim_salida=128, rng=rng_modelo),
         ActivacionLeakyReLU(),
-        CapaDensa(dim_entrada=128, dim_salida=10),
+        CapaDensa(dim_entrada=128, dim_salida=10, rng=rng_modelo),
         ActivacionSoftmax(),
     ]
 
@@ -123,11 +126,12 @@ def main() -> None:
     mejor_epoca = None
     mejores_pesos = None
 
-    rng_batches = np.random.default_rng(SEED)
+    rng_batches = np.random.default_rng(seed_modelo)
     n_batches_por_epoca = int(np.ceil(len(X_train) / BATCH_SIZE))
 
-    print(f"Entrenando con {len(X_train)} imágenes ({n_batches_por_epoca} batches/época de "
-          f"{BATCH_SIZE}), validando sobre {len(X_val)}, test reservado con {len(X_test)}...")
+    if not quiet:
+        print(f"Entrenando con {len(X_train)} imágenes ({n_batches_por_epoca} batches/época de "
+              f"{BATCH_SIZE}), validando sobre {len(X_val)}, test reservado con {len(X_test)}...")
     for epoch in range(EPOCHS_MAX):
         loss_train_acumulada = 0.0
         n_vistas = 0
@@ -159,24 +163,28 @@ def main() -> None:
             mejor_epoca = epoch
             mejores_pesos = [(c.W.copy(), c.b.copy()) for c in red if isinstance(c, CapaDensa)]
 
-        print(f"Época {epoch}/{EPOCHS_MAX} - loss train: {loss_train:.4f} - loss val: {loss_val:.4f}")
+        if not quiet:
+            print(f"Época {epoch}/{EPOCHS_MAX} - loss train: {loss_train:.4f} - loss val: {loss_val:.4f}")
 
         if epoch >= PACIENCIA_EARLY_STOP:
             loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
             mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
             if mejora_relativa < MEJORA_MINIMA_RELATIVA:
-                print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
-                      f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
+                if not quiet:
+                    print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
+                          f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
                 break
     else:
-        print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {EPOCHS_MAX})")
+        if not quiet:
+            print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {EPOCHS_MAX})")
 
     epocas_entrenadas = len(historial_loss_train)
 
     for capa, (W, b) in zip([c for c in red if isinstance(c, CapaDensa)], mejores_pesos):
         capa.W, capa.b = W, b
-    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
-          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+    if not quiet:
+        print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+              f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
 
     # === Única vez que se toca el conjunto de test, ya con la red entrenada ===
     A_test = predecir(red, X_test)
@@ -188,6 +196,8 @@ def main() -> None:
         matriz_confusion[real, pred] += 1
 
     metrics = {
+        "seed_split": seed_split,
+        "seed_modelo": seed_modelo,
         "batch_size": BATCH_SIZE,
         "n_batches_por_epoca": n_batches_por_epoca,
         "epochs_configuradas": EPOCHS_MAX,
@@ -201,6 +211,10 @@ def main() -> None:
         "accuracy_test": accuracy_test,
         "matriz_confusion": matriz_confusion.tolist(),
     }
+
+    if not guardar_graficas:
+        return {**metrics, "historial_loss_val": historial_loss_val}
+
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
     np.savez(
@@ -208,7 +222,8 @@ def main() -> None:
         W1=red[0].W, b1=red[0].b, W2=red[2].W, b2=red[2].b,
     )
 
-    print(f"Accuracy en test: {accuracy_test:.4f} ({len(X_test)} imágenes)")
+    if not quiet:
+        print(f"Accuracy en test: {accuracy_test:.4f} ({len(X_test)} imágenes)")
 
     # === Gráfico 1: curva de aprendizaje ===
     plt.figure(figsize=(6, 4))
@@ -255,7 +270,10 @@ def main() -> None:
     plt.savefig(RESULTS_DIR / "confusion_matrix.png", dpi=150)
     plt.close()
 
-    print(f"Resultados y pesos guardados en {RESULTS_DIR}")
+    if not quiet:
+        print(f"Resultados y pesos guardados en {RESULTS_DIR}")
+
+    return {**metrics, "historial_loss_val": historial_loss_val}
 
 
 if __name__ == "__main__":

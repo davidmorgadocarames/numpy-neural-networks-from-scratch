@@ -12,14 +12,14 @@ sino comprobar que la red representa una frontera de decisión no lineal.
 
 ## Resultado
 
-Loss final **0.0021** tras 1000 épocas, **4/4 aciertos**:
+Loss final **0.0016** tras 1000 épocas, **4/4 aciertos**:
 
 | Entrada | Objetivo | Predicción |
 |---|---|---|
-| [0,0] | 0 | 0.0405 |
-| [0,1] | 1 | 0.9401 |
-| [1,0] | 1 | 0.9648 |
-| [1,1] | 0 | 0.0448 |
+| [0,0] | 0 | 0.0551 |
+| [0,1] | 1 | 0.9651 |
+| [1,0] | 1 | 0.9666 |
+| [1,1] | 0 | 0.0341 |
 
 ![Curva de aprendizaje](results/learning_curve.png)
 
@@ -38,6 +38,28 @@ clase). Con solo 4 combinaciones y una red entrenada hasta un loss de 0.0021, no
 para confusión.
 
 ![Matriz de confusión](results/confusion_matrix.png)
+
+## Robustez frente a la semilla
+
+`np.random.seed(SEED)` gobierna varias cosas distintas a la vez (qué pesos iniciales salen, en
+qué orden se procesan los datos...), así que un único run con una sola semilla no dice si el
+resultado es representativo o si tuvo suerte con esa semilla en concreto. Aquí se separan en
+`seed_split` (sin efecto en este proyecto: las 4 combinaciones de XOR son el universo completo,
+no hay split que hacer) y `seed_modelo` (gobierna la inicialización de los pesos), y se repite
+el entrenamiento con **10 semillas de inicialización distintas**, sorteadas de forma
+independiente (`python run_seed_sweep.py --solo 01-xor`, ver [README raíz](../README.md) para
+la metodología completa):
+
+| Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
+|---|---|---|---|---|---|
+| Loss final | 0.0017 | 0.0006 | 0.0013 | 0.0024 | 10 |
+
+![Robustez frente a la semilla](results/seed_sweep.png)
+
+![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+
+La red converge de forma consistente independientemente de la inicialización, coherente con ser
+el problema más simple del repositorio.
 
 ## Reproducir
 

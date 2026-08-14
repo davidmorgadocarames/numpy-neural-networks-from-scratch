@@ -38,7 +38,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from capas import ActivacionLeakyReLU, CapaDensa, predecir
 
-SEED = 42
+SEED_DATOS = 42  # gobierna solo la generación de datos -- fijo siempre, nunca es argumento
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 VENTANA = 3  # horas de historia que mira la red para predecir la siguiente
@@ -55,8 +55,14 @@ PACIENCIA_EARLY_STOP = 200
 MEJORA_MINIMA_RELATIVA = 0.005
 
 
-def main() -> None:
-    np.random.seed(SEED)
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_modelo es independiente de SEED_DATOS -- ver README para el análisis de robustez
+    sobre múltiples semillas. seed_split se acepta por consistencia con el resto de proyectos
+    pero no tiene efecto aquí: el split es cronológico (train/val/test en orden temporal), no
+    aleatorio -- mezclar el tiempo sería fuga de información (la red "vería" el futuro)."""
+    # Datos: SIEMPRE con SEED_DATOS, vía la API legacy de np.random -- así la serie temporal no
+    # cambia nunca, sea cual sea seed_modelo.
+    np.random.seed(SEED_DATOS)
 
     n_puntos = N_DIAS * PUNTOS_POR_DIA
     dias = np.linspace(0, N_DIAS, n_puntos, endpoint=False)  # 0.0, 1/24, 2/24, ... (en días)
@@ -85,10 +91,11 @@ def main() -> None:
     X_train, X_val, X_test = X[:split_train], X[split_train:split_val], X[split_val:]
     Y_train, Y_val, Y_test = Y[:split_train], Y[split_train:split_val], Y[split_val:]
 
+    rng_modelo = np.random.default_rng(seed_modelo)
     red = [
-        CapaDensa(dim_entrada=VENTANA, dim_salida=6, semilla_he=False),
+        CapaDensa(dim_entrada=VENTANA, dim_salida=6, semilla_he=False, rng=rng_modelo),
         ActivacionLeakyReLU(),
-        CapaDensa(dim_entrada=6, dim_salida=1, semilla_he=False),
+        CapaDensa(dim_entrada=6, dim_salida=1, semilla_he=False, rng=rng_modelo),
     ]
 
     learning_rate = 0.1
@@ -131,18 +138,21 @@ def main() -> None:
             loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
             mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
             if mejora_relativa < MEJORA_MINIMA_RELATIVA:
-                print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
-                      f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
+                if not quiet:
+                    print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
+                          f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
                 break
     else:
-        print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
+        if not quiet:
+            print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
 
     epocas_entrenadas = len(historial_loss_train)
 
     for capa, (W, b) in zip([c for c in red if isinstance(c, CapaDensa)], mejores_pesos):
         capa.W, capa.b = W, b
-    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
-          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+    if not quiet:
+        print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+              f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
 
     # === Única vez que se toca el conjunto de test, ya con la red entrenada (pesos del mínimo
     # de validación, no los de la última época entrenada) ===
@@ -159,6 +169,9 @@ def main() -> None:
     horas_test = (dias[VENTANA + split_val : VENTANA + split_val + len(Y_test)] - dias[VENTANA + split_val]) * 24
 
     metrics = {
+        "seed_datos": SEED_DATOS,
+        "seed_split": seed_split,
+        "seed_modelo": seed_modelo,
         "epochs_configuradas": epochs,
         "epochs_entrenadas": epocas_entrenadas,
         "epoca_mejor_val": mejor_epoca + 1,
@@ -171,8 +184,13 @@ def main() -> None:
         "n_val": int(len(X_val)),
         "n_test": int(len(X_test)),
     }
+
+    if not guardar_graficas:
+        return {**metrics, "historial_loss_val": historial_loss_val}
+
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    print(f"MAE en test: {mae_test_c:.4f} °C")
+    if not quiet:
+        print(f"MAE en test: {mae_test_c:.4f} °C")
 
     # === Gráfico 1: curva de aprendizaje (train + validación, que es lo que decide cuándo
     # parar) ===
@@ -218,7 +236,10 @@ def main() -> None:
     plt.savefig(RESULTS_DIR / "predicted_vs_real.png", dpi=150)
     plt.close()
 
-    print(f"Resultados guardados en {RESULTS_DIR}")
+    if not quiet:
+        print(f"Resultados guardados en {RESULTS_DIR}")
+
+    return {**metrics, "historial_loss_val": historial_loss_val}
 
 
 if __name__ == "__main__":

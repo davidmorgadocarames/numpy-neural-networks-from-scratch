@@ -22,11 +22,11 @@ hacer trampa. La solución es un split en TRES partes -- 60% train / 20% validac
 estratificado por brazo -- con early stopping que decide cuándo parar mirando el error de
 VALIDACIÓN, nunca el de test.
 
-Hechos verificados en esta ejecución (`SEED=0`, split 60/20/20): el error de **test** alcanza
-su mínimo en la época ~2770 (0.0657) y sube hasta 0.0762 al terminar las 5000 épocas -- el
-sobreajuste es real. El error de **validación**, en cambio, sigue bajando de forma monótona
-durante las 5000 épocas completas (su mínimo cae en la época 4996, casi al final) y nunca llega
-a detectar ese repunte, por lo que el early stopping no se activa en esta ejecución.
+Hechos verificados en esta ejecución (`seed_split=0, seed_modelo=0`, split 60/20/20): el error
+de **test** alcanza su mínimo en la época 1304 (0.0536) y sube hasta 0.0791 al terminar las
+5000 épocas -- el sobreajuste es real. El error de **validación**, en cambio, sigue bajando de
+forma monótona durante las 5000 épocas completas (su mínimo cae en la época 5000, la última) y
+nunca llega a detectar ese repunte, por lo que el early stopping no se activa en esta ejecución.
 
 La causa es el tamaño de la muestra: con solo 30 puntos de validación por brazo, la señal es
 demasiado ruidosa para detectar de forma fiable un sobreajuste que sí está presente en el
@@ -38,9 +38,9 @@ concreta no alcanza a capturar el sobreajuste dentro del presupuesto de 5000 ép
 
 Esto no compromete la accuracy reportada: el test nunca participó en ninguna decisión de
 entrenamiento. El checkpoint de mejor validación (restaura los pesos de la época con menor
-`loss_val`, ver [README raíz](../README.md)) recupera aquí los pesos de la época 4996 --
-prácticamente el final, así que en esta ejecución no cambia el resultado, pero es el mismo
-mecanismo que sí lo habría corregido si la validación hubiera detectado el repunte a tiempo.
+`loss_val`, ver [README raíz](../README.md)) recupera aquí los pesos de la época 5000 -- el
+final, así que en esta ejecución no cambia el resultado, pero es el mismo mecanismo que sí lo
+habría corregido si la validación hubiera detectado el repunte a tiempo.
 
 ## Resultado
 
@@ -89,6 +89,25 @@ moderado es una frontera de decisión curva, pero no especialmente compleja, y 8
 capa ya bastan para separarla bien. La arquitectura profunda de este proyecto es una elección
 pedagógica (demostrar el patrón de varias capas encadenadas), no una respuesta a que el
 problema lo exigiera.
+
+## Robustez frente a la semilla
+
+Repitiendo el entrenamiento con **10 pares (seed_split, seed_modelo) sorteados de forma
+independiente** (`python run_seed_sweep.py --solo 06-espirales`, ver
+[README raíz](../README.md)):
+
+| Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
+|---|---|---|---|---|---|
+| Accuracy en test | 98.44% | 1.50% | 95.56% | 100% | 10 |
+
+![Robustez frente a la semilla](results/seed_sweep.png)
+
+![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+
+La ejecución canónica documentada arriba (97.78%) está cerca de la media, no en un extremo —
+resultado estable, coherente con que 3 brazos de espiral con ruido moderado no es un problema
+especialmente difícil para esta arquitectura (ver también la comparación con la red pequeña de
+más abajo).
 
 ## Reproducir
 

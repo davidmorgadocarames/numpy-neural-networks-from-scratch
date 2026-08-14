@@ -35,9 +35,9 @@ Con early stopping activado (ver README de
 aquí), entrenado sobre 113 horas, validado sobre 38 y evaluado sobre 38 horas de test (las
 últimas cronológicamente, nunca vistas ni usadas para decidir nada):
 
-- **Corte del early stopping: época 1811** de 3000 configuradas (techo de seguridad, no un
+- **Corte del early stopping: época 1105** de 3000 configuradas (techo de seguridad, no un
   objetivo) — el error de **validación** llevaba 200 épocas sin mejorar un 0.5%. Los pesos
-  usados para evaluar son los de la **época 1804**, el mínimo real de `loss_val`, restaurado
+  usados para evaluar son los de la **época 1014**, el mínimo real de `loss_val`, restaurado
   por checkpoint (ver "Checkpoint del mejor punto de validación" en el
   [README raíz](../README.md)).
 - **MAE en test: 0.88 °C** — próximo al ruido de fondo (0.7 °C de desviación), indicando que
@@ -59,6 +59,25 @@ sin significado, como en la versión anterior de este proyecto). La predicción 
 el ciclo día/noche real, incluyendo el pico y el valle que nunca vio durante el entrenamiento:
 
 ![Predicción vs realidad](results/predicted_vs_real.png)
+
+## Robustez frente a la semilla
+
+El split aquí es cronológico (train/val/test en orden temporal fijo), no aleatorio, así que
+solo la inicialización de pesos (`seed_modelo`) puede mover el resultado. Repitiendo el
+entrenamiento con **10 semillas de inicialización distintas**
+(`python run_seed_sweep.py --solo 04-temperatura`, ver [README raíz](../README.md)):
+
+| Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
+|---|---|---|---|---|---|
+| MAE en test (°C) | 0.89 | 0.03 | 0.83 | 0.91 | 10 |
+
+![Robustez frente a la semilla](results/seed_sweep.png)
+
+![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+
+Muy estable — consistente con ser un problema de regresión suave (una neurona ve solo 3 valores
+de entrada) y sin el ruido de un split aleatorio que sí afecta a otros proyectos del
+repositorio.
 
 ## Reproducir
 

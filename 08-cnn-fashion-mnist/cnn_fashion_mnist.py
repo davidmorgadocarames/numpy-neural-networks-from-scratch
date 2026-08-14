@@ -43,7 +43,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from capas import ActivacionLeakyReLU, ActivacionSoftmax, CapaDensa
 from capas_cnn import CapaConv2D, CapaDropout, CapaFlatten, CapaMaxPool2D, augmentar_lote, predecir_cnn
 
-SEED = 42
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
@@ -67,14 +66,15 @@ PACIENCIA_EARLY_STOP = 150
 MEJORA_MINIMA_RELATIVA = 0.005
 
 
-def cargar_datos():
-    print("Descargando Fashion-MNIST (sklearn fetch_openml)...")
+def cargar_datos(seed_split, quiet=False):
+    if not quiet:
+        print("Descargando Fashion-MNIST (sklearn fetch_openml)...")
     datos = fetch_openml("Fashion-MNIST", version=1, as_frame=False, parser="liac-arff")
     X_puro, Y_puro = datos.data, datos.target.astype(int)
 
     # Muestra estratificada (mismo patrón que 07-reconocimiento-digitos): mismo número de
     # train/validación/test por clase para que la matriz de confusión no esté sesgada.
-    rng = np.random.default_rng(SEED)
+    rng = np.random.default_rng(seed_split)
     idx_train, idx_val, idx_test = [], [], []
     for clase in range(10):
         idx_clase = np.where(Y_puro == clase)[0]
@@ -101,21 +101,24 @@ def cargar_datos():
     return X_train, Y_train, Y_train_num, X_val, Y_val_num, X_test, Y_test_num
 
 
-def crear_red():
-    """Misma arquitectura y mismos pesos iniciales para baseline y augmented -- se llama con
-    la semilla global reseteada justo antes, así que cualquier diferencia final entre ambos
-    entrenamientos se debe a los datos (con o sin augmentation), no a la inicialización."""
+def crear_red(rng_modelo):
+    """Misma arquitectura y mismos pesos iniciales para las tres variantes -- se llama con un
+    rng_modelo fresco (recién creado a partir de seed_modelo) cada vez, así que cualquier
+    diferencia final entre entrenamientos se debe a los datos (con o sin augmentation), no a la
+    inicialización. El mismo rng también gobierna las máscaras de CapaDropout durante el
+    entrenamiento -- su secuencia de sorteos es idéntica en las tres variantes hasta el punto
+    en que cada una para (early stopping), por la misma razón."""
     return [
-        CapaConv2D(3, 3, 1, 8), ActivacionLeakyReLU(), CapaMaxPool2D(2, 2),
-        CapaConv2D(3, 3, 8, 16), ActivacionLeakyReLU(), CapaMaxPool2D(2, 2),
+        CapaConv2D(3, 3, 1, 8, rng=rng_modelo), ActivacionLeakyReLU(), CapaMaxPool2D(2, 2),
+        CapaConv2D(3, 3, 8, 16, rng=rng_modelo), ActivacionLeakyReLU(), CapaMaxPool2D(2, 2),
         CapaFlatten(),
-        CapaDensa(400, 64, semilla_he=True), ActivacionLeakyReLU(),
-        CapaDropout(0.3),
-        CapaDensa(64, 10, semilla_he=True), ActivacionSoftmax(),
+        CapaDensa(400, 64, semilla_he=True, rng=rng_modelo), ActivacionLeakyReLU(),
+        CapaDropout(0.3, rng=rng_modelo),
+        CapaDensa(64, 10, semilla_he=True, rng=rng_modelo), ActivacionSoftmax(),
     ]
 
 
-def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation, rng_aug, prob_flip=0.5):
+def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation, rng_aug, prob_flip=0.5, quiet=False):
     """Bucle de entrenamiento full-batch (mismo estilo que el resto del repo), con early
     stopping por ventana de mejora relativa sobre el loss de VALIDACIÓN (ver README de
     02-celsius-fahrenheit / 05-precio-casas para la explicación general del criterio). El
@@ -171,7 +174,7 @@ def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation,
         for capa in reversed(red[:-1]):
             gradiente = capa.backward(gradiente, LEARNING_RATE)
 
-        if epoch % 50 == 0:
+        if not quiet and epoch % 50 == 0:
             print(f"  [{nombre}] época {epoch}: loss_train={loss_train:.4f} "
                   f"loss_val={loss_val:.4f} acc_val={acc_val:.4f}")
 
@@ -179,18 +182,21 @@ def entrenar(nombre, red, X_train, Y_train, X_val, Y_val_num, usar_augmentation,
             loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
             mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
             if mejora_relativa < MEJORA_MINIMA_RELATIVA:
-                print(f"  [{nombre}] early stopping en la época {epoch + 1}: el loss de "
-                      f"validación lleva {PACIENCIA_EARLY_STOP} épocas sin mejorar un "
-                      f"{MEJORA_MINIMA_RELATIVA:.1%} ({time.time() - t0:.0f}s)")
+                if not quiet:
+                    print(f"  [{nombre}] early stopping en la época {epoch + 1}: el loss de "
+                          f"validación lleva {PACIENCIA_EARLY_STOP} épocas sin mejorar un "
+                          f"{MEJORA_MINIMA_RELATIVA:.1%} ({time.time() - t0:.0f}s)")
                 break
     else:
-        print(f"  [{nombre}] completó las {EPOCHS_MAX} épocas sin activar el early stopping "
-              f"({time.time() - t0:.0f}s)")
+        if not quiet:
+            print(f"  [{nombre}] completó las {EPOCHS_MAX} épocas sin activar el early stopping "
+                  f"({time.time() - t0:.0f}s)")
 
     for capa, (W, b) in zip(capas_con_pesos, mejores_pesos):
         capa.W, capa.b = W, b
-    print(f"  [{nombre}] pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
-          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {len(historial_loss_train)}")
+    if not quiet:
+        print(f"  [{nombre}] pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+              f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {len(historial_loss_train)}")
 
     return historial_loss_train, historial_loss_val, historial_acc_val, mejor_epoca, mejor_loss_val
 
@@ -229,33 +235,40 @@ def graficar_confusion(matriz, accuracy, titulo, ruta):
     plt.close()
 
 
-def main() -> None:
-    X_train, Y_train, Y_train_num, X_val, Y_val_num, X_test, Y_test_num = cargar_datos()
-    print(f"Entrenando con {len(X_train)} imágenes, validando con {len(X_val)}, "
-          f"evaluando sobre {len(X_test)} de test...")
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split y seed_modelo son independientes -- no hay SEED_DATOS porque Fashion-MNIST es
+    un dataset real y fijo. seed_modelo se resetea a un rng fresco antes de cada una de las 3
+    variantes (ver crear_red) para que sigan partiendo de los mismos pesos iniciales -- la
+    comparación baseline/augmented/augmented_sin_flip sigue siendo justa dentro de cada semilla
+    de la barrida. Ver README para el análisis de robustez sobre múltiples semillas."""
+    X_train, Y_train, Y_train_num, X_val, Y_val_num, X_test, Y_test_num = cargar_datos(seed_split, quiet=quiet)
+    if not quiet:
+        print(f"Entrenando con {len(X_train)} imágenes, validando con {len(X_val)}, "
+              f"evaluando sobre {len(X_test)} de test...")
 
-    # === Gráfico de datos: muestra del dataset + ejemplo de lo que hace la augmentation ===
-    rng_demo = np.random.default_rng(SEED)
-    fig, axes = plt.subplots(3, 10, figsize=(16, 5.5))
-    for clase in range(10):
-        idx = np.where(Y_train_num == clase)[0][0]
-        axes[0, clase].imshow(X_train[idx, :, :, 0], cmap="gray")
-        axes[0, clase].set_title(NOMBRES_CLASES[clase], fontsize=8)
-    ejemplo = X_train[np.where(Y_train_num == 0)[0][0]:np.where(Y_train_num == 0)[0][0] + 1]
-    for fila in (1, 2):
-        aug = augmentar_lote(np.repeat(ejemplo, 10, axis=0), rng_demo)
-        for col in range(10):
-            axes[fila, col].imshow(aug[col, :, :, 0], cmap="gray")
-    for fila, etiqueta in [(0, "Original"), (1, "Augmentation\n(ej. 1)"), (2, "Augmentation\n(ej. 2)")]:
-        for col in range(10):
-            axes[fila, col].set_xticks([])
-            axes[fila, col].set_yticks([])
-        axes[fila, 0].set_ylabel(etiqueta, fontsize=9)
-    plt.suptitle("Fila 1: una imagen por clase — Filas 2-3: la MISMA imagen (clase 0, "
-                 "Camiseta) tras 10 augmentations aleatorias distintas", fontweight="bold")
-    plt.tight_layout()
-    plt.savefig(RESULTS_DIR / "data_visualization.png", dpi=150)
-    plt.close()
+    if guardar_graficas:
+        # === Gráfico de datos: muestra del dataset + ejemplo de lo que hace la augmentation ===
+        rng_demo = np.random.default_rng(seed_modelo)
+        fig, axes = plt.subplots(3, 10, figsize=(16, 5.5))
+        for clase in range(10):
+            idx = np.where(Y_train_num == clase)[0][0]
+            axes[0, clase].imshow(X_train[idx, :, :, 0], cmap="gray")
+            axes[0, clase].set_title(NOMBRES_CLASES[clase], fontsize=8)
+        ejemplo = X_train[np.where(Y_train_num == 0)[0][0]:np.where(Y_train_num == 0)[0][0] + 1]
+        for fila in (1, 2):
+            aug = augmentar_lote(np.repeat(ejemplo, 10, axis=0), rng_demo)
+            for col in range(10):
+                axes[fila, col].imshow(aug[col, :, :, 0], cmap="gray")
+        for fila, etiqueta in [(0, "Original"), (1, "Augmentation\n(ej. 1)"), (2, "Augmentation\n(ej. 2)")]:
+            for col in range(10):
+                axes[fila, col].set_xticks([])
+                axes[fila, col].set_yticks([])
+            axes[fila, 0].set_ylabel(etiqueta, fontsize=9)
+        plt.suptitle("Fila 1: una imagen por clase — Filas 2-3: la MISMA imagen (clase 0, "
+                     "Camiseta) tras 10 augmentations aleatorias distintas", fontweight="bold")
+        plt.tight_layout()
+        plt.savefig(RESULTS_DIR / "data_visualization.png", dpi=150)
+        plt.close()
 
     # Tercera variante -- "augmented_sin_flip": misma augmentation que "augmented" (rotación,
     # zoom, desplazamiento) pero con prob_flip=0.0, para aislar si el flip horizontal ayuda o
@@ -272,23 +285,26 @@ def main() -> None:
         ("augmented_sin_flip", True, 0.0),
     ]
     for nombre, usar_aug, prob_flip in variantes:
-        print(f"\n=== Entrenando '{nombre}' (augmentation={usar_aug}, prob_flip={prob_flip}) ===")
-        np.random.seed(SEED)  # mismos pesos iniciales en las tres variantes
-        red = crear_red()
-        rng_aug = np.random.default_rng(SEED)
+        if not quiet:
+            print(f"\n=== Entrenando '{nombre}' (augmentation={usar_aug}, prob_flip={prob_flip}) ===")
+        rng_modelo = np.random.default_rng(seed_modelo)  # mismos pesos iniciales en las tres variantes
+        red = crear_red(rng_modelo)
+        rng_aug = np.random.default_rng(seed_modelo)
         hist_train, hist_val, hist_acc_val, mejor_epoca, mejor_loss_val = entrenar(
-            nombre, red, X_train, Y_train, X_val, Y_val_num, usar_aug, rng_aug, prob_flip=prob_flip
+            nombre, red, X_train, Y_train, X_val, Y_val_num, usar_aug, rng_aug, prob_flip=prob_flip, quiet=quiet
         )
         # evaluar() se llama con los pesos ya restaurados al mínimo de validación dentro de
         # entrenar() -- test sigue tocándose una única vez, con la red congelada.
         accuracy, matriz_confusion = evaluar(red, X_test, Y_test_num)
-        print(f"  [{nombre}] accuracy final en test: {accuracy:.4f}")
+        if not quiet:
+            print(f"  [{nombre}] accuracy final en test: {accuracy:.4f}")
 
-        graficar_confusion(
-            matriz_confusion, accuracy,
-            f"Matriz de confusión test — {nombre}",
-            RESULTS_DIR / f"confusion_matrix_{nombre}.png",
-        )
+        if guardar_graficas:
+            graficar_confusion(
+                matriz_confusion, accuracy,
+                f"Matriz de confusión test — {nombre}",
+                RESULTS_DIR / f"confusion_matrix_{nombre}.png",
+            )
 
         resultados[nombre] = {
             "epochs_entrenadas": len(hist_train),
@@ -298,10 +314,13 @@ def main() -> None:
             "loss_val_final": float(mejor_loss_val),
             "matriz_confusion": matriz_confusion.tolist(),
             "historial_accuracy_val": hist_acc_val,
+            "historial_loss_val": hist_val,
         }
         curvas[nombre] = hist_acc_val
 
     metrics = {
+        "seed_split": seed_split,
+        "seed_modelo": seed_modelo,
         "epochs_max_configuradas": EPOCHS_MAX,
         "n_train": int(len(X_train)),
         "n_val": int(len(X_val)),
@@ -309,6 +328,10 @@ def main() -> None:
         "clases": NOMBRES_CLASES,
         "resultados": resultados,
     }
+
+    if not guardar_graficas:
+        return metrics
+
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
     # === Curva de aprendizaje comparativa: accuracy de VALIDACIÓN en las tres variantes (es lo
@@ -326,11 +349,14 @@ def main() -> None:
     plt.savefig(RESULTS_DIR / "learning_curve.png", dpi=150)
     plt.close()
 
-    print("\n=== Resumen ===")
-    for nombre, _, _ in variantes:
-        print(f"{nombre:20s} {resultados[nombre]['accuracy_test']:.4f} "
-              f"({resultados[nombre]['epochs_entrenadas']} épocas)")
-    print(f"Resultados guardados en {RESULTS_DIR}")
+    if not quiet:
+        print("\n=== Resumen ===")
+        for nombre, _, _ in variantes:
+            print(f"{nombre:20s} {resultados[nombre]['accuracy_test']:.4f} "
+                  f"({resultados[nombre]['epochs_entrenadas']} épocas)")
+        print(f"Resultados guardados en {RESULTS_DIR}")
+
+    return metrics
 
 
 if __name__ == "__main__":

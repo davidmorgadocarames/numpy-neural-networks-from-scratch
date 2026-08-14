@@ -17,10 +17,11 @@ pip install -r ../requirements.txt
 pytest ../tests/test_gradients.py -v
 ```
 
-La arquitectura se entrena **dos veces con los mismos pesos iniciales**: una vez tal cual
-(*baseline*) y otra con data augmentation (flip horizontal, rotación, zoom y desplazamiento
-aleatorios, reimplementados a mano en NumPy — ver `augmentar_lote()` en `capas_cnn.py`), para
-medir el efecto real de la técnica en vez de solo mencionarla.
+La arquitectura se entrena **tres veces con los mismos pesos iniciales**: tal cual (*baseline*),
+con data augmentation completa (flip horizontal, rotación, zoom y desplazamiento aleatorios,
+reimplementados a mano en NumPy — ver `augmentar_lote()` en `capas_cnn.py`) y con la misma
+augmentation pero sin flip (*augmented_sin_flip*, para aislar su efecto), para medir el efecto
+real de la técnica en vez de solo mencionarla.
 
 ## Arquitectura
 
@@ -56,15 +57,15 @@ en producción.
 El early stopping de cada versión decide cuándo parar mirando su propio loss de
 **validación** — no hace falta igualar nada a mano entre baseline y augmented, cada una para
 sola cuando su validación deja de mejorar. En este presupuesto de 400 épocas máximas (techo de
-seguridad, no un objetivo), ninguna de las dos activa el early stopping — ambas agotan el
-techo, todavía mejorando ligeramente. Los pesos usados para evaluar son los del mínimo de
+seguridad, no un objetivo), el **baseline sí activa el early stopping** (época 324); augmented
+lo activa casi al final (época 396). Los pesos usados para evaluar son los del mínimo de
 `loss_val` de cada una, restaurados por checkpoint (ver "Checkpoint del mejor punto de
 validación" en el [README raíz](../README.md)):
 
 | | Épocas (corte) | Época del mínimo de validación | Accuracy en test | Loss validación (mínimo) |
 |---|---|---|---|---|
-| **Baseline** | 400 (todas) | 394 | **79.00%** | 0.4689 |
-| **Con augmentation** | 400 (todas) | 370 | **74.80%** | 0.5858 |
+| **Baseline** | 324 | 315 | **79.50%** | 0.5060 |
+| **Con augmentation** | 396 | 376 | **76.20%** | 0.6072 |
 
 ![Curva de aprendizaje](results/learning_curve.png)
 
@@ -84,13 +85,13 @@ a época; el test es un único número final por versión, calculado una sola ve
    versión augmented es la que más se beneficia de quedarse con los pesos del mínimo de
    validación (época 370) en vez de los de la época 400, precisamente porque su curva es más
    ruidosa y el punto final no coincide con el mejor punto.
-2. **Apenas había hueco de overfitting que cerrar.** El loss de validación del baseline sigue
-   bajando en paralelo al de train hasta el final sin señales de divergencia clara (ver
-   `results/metrics.json`) — la red ya generaliza razonablemente bien gracias al Dropout(0.3)
-   que ambas versiones comparten. La augmentation ayuda más cuando el modelo memoriza (train
-   mucho mejor que validación); aquí ese síntoma casi no existe, así que añadir encima una
-   augmentation agresiva (rotación ±15°, zoom ±10%, desplazamiento ±2px) solo añade dificultad
-   de optimización sin un problema real que resolver.
+2. **El hueco de overfitting que hay que cerrar es pequeño.** En el mínimo de validación del
+   baseline, el loss de train (0.4658) y el de validación (0.5060) están razonablemente cerca
+   (ver `results/metrics.json`) — la red ya generaliza decentemente gracias al Dropout(0.3) que
+   ambas versiones comparten. La augmentation ayuda más cuando el modelo memoriza (train mucho
+   mejor que validación); aquí ese síntoma es moderado, así que añadir encima una augmentation
+   agresiva (rotación ±15°, zoom ±10%, desplazamiento ±2px) paga el coste de optimización sin
+   un hueco grande que cerrar a cambio.
 3. **Fashion-MNIST ya viene centrado y recortado de forma consistente** (a diferencia de fotos
    reales de un catálogo, por ejemplo), así que hay menos variación de pose/posición que
    "enseñar a ignorar" con augmentation geométrica — el margen de mejora que esta técnica
@@ -102,31 +103,32 @@ de optimización antes de que el beneficio de generalización llegue a notarse d
 
 ## Matrices de confusión: dónde falla cada versión
 
-**Baseline (79.00%)**:
+**Baseline (79.50%)**:
 
 ![Matriz de confusión — baseline](results/confusion_matrix_baseline.png)
 
-**Con augmentation (74.80%)**:
+**Con augmentation (76.20%)**:
 
 ![Matriz de confusión — augmented](results/confusion_matrix_augmented.png)
 
-En **ambas** versiones, "Camisa" es con diferencia la clase más difícil (38/100 baseline,
-13/100 con augmentation) — es un resultado bien conocido de Fashion-MNIST: una camisa comparte
+En **ambas** versiones, "Camisa" es con diferencia la clase más difícil (42/100 baseline,
+16/100 con augmentation) — es un resultado bien conocido de Fashion-MNIST: una camisa comparte
 silueta con la camiseta, el jersey y el abrigo, y sin color ni textura (son imágenes en escala
 de grises de 28×28) el contorno es prácticamente toda la información disponible para
-distinguirlas. Con augmentation ese problema se agrava: 40 de las 100 camisas de test se
-confunden con "Jersey", frente a 8 en el baseline.
+distinguirlas. Con augmentation ese problema se agrava: 29 de las 100 camisas de test se
+confunden con "Jersey" (frente a 20 en el baseline) y 19 con "Abrigo" (frente a 10).
 
-Lo que más cambia entre versiones es "Jersey" y "Abrigo" — pero, con los pesos ya restaurados
-al mínimo de validación, en la dirección contraria a lo que mostraba la versión anterior de
-este README (que usaba los pesos de la última época, no los del mejor punto de validación):
-"Jersey" **mejora** con augmentation (50/100 → 75/100), mientras "Abrigo" **empeora** (84/100
-→ 62/100, con 29 de esas 100 imágenes ahora confundidas específicamente con "Jersey"). Sigue
-siendo coherente con el punto 1 de arriba — jersey y abrigo comparten silueta y es la frontera
-entre ambos la que más se mueve con la augmentation geométrica — pero el sentido concreto en
-que se mueve esa frontera (a favor de una clase y en contra de la otra) depende de qué pesos
-exactos se comparen, otra razón más para fijar ese punto de comparación con un criterio
-objetivo (el mínimo de validación) en vez de con la última época entrenada.
+"Jersey" y "Abrigo" también se mueven bastante entre versiones, pero **en sentido contrario al
+de una ejecución anterior de este mismo análisis** (con otra semilla): aquí "Jersey" **empeora**
+con augmentation (72/100 → 66/100) mientras "Abrigo" **mejora** (66/100 → 83/100) — justo al
+revés de lo que se observó en el run documentado previamente en este README. No es una
+contradicción ni un error: es la confirmación directa, con datos, del punto que ya se apuntaba
+aquí antes de medir la robustez frente a la semilla (ver esa sección más abajo) — el sentido
+concreto en que se mueve la frontera Jersey/Abrigo con la augmentation depende de la
+inicialización y el split concretos, no es un efecto estable y direccional. Lo que sí se repite
+en ambas ejecuciones es que jersey y abrigo comparten silueta y son las clases donde la
+augmentation geométrica más remueve la frontera de decisión — el *qué* se mueve es estable, el
+*hacia dónde* no.
 
 ## Dataset completo + mini-batches — `cnn_fashion_mnist_full.py`
 
@@ -145,45 +147,48 @@ lanzar ningún error explícito.
 
 | | Train / Val / Test | Accuracy baseline | Accuracy augmented | Tiempo total |
 |---|---|---|---|---|
-| Muestra reducida, full-batch | 2.400 / 600 / 1.000 | 79.00% | 74.80% | ~11 min (800 épocas en total) |
-| Dataset completo, mini-batch | 42.000 / 14.000 / 14.000 | **88.34%** | **85.24%** | ~6,5 min (33 épocas en total) |
+| Muestra reducida, full-batch | 2.400 / 600 / 1.000 | 79.50% | 76.20% | ~13,5 min (720 épocas en total) |
+| Dataset completo, mini-batch | 42.000 / 14.000 / 14.000 | **88.84%** | **84.89%** | ~8,3 min (27 épocas en total) |
 
 Dos cosas notables:
 
 1. **Con 17,5x más datos, el entrenamiento tardó *menos* tiempo real**, no más — la versión
-   full-batch necesitaba 400 épocas por versión (800 en total) para converger con solo 1
+   full-batch necesita 324 épocas (baseline) y 396 (augmented), 720 en total, con solo 1
    actualización de pesos cada una; con mini-batches (1.313 actualizaciones por época) la red
-   converge en 13 épocas (baseline) y 20 (augmented), 33 en total. Cada actualización individual
+   converge en 13 épocas (baseline) y 14 (augmented), 27 en total. Cada actualización individual
    es más barata (procesa 32 imágenes, no 2.400), y hacen falta muchísimas menos épocas
    completas para llegar al mismo sitio.
-2. **La augmentation sigue por detrás del baseline (85.24% < 88.34%), pero la brecha se
-   estrecha según crece la muestra**: 4,20 puntos con la muestra reducida (79.00% - 74.80%)
-   frente a 3,10 puntos con el dataset completo (88.34% - 85.24%). Es la misma lectura que en
-   la sección anterior, ahora con datos: más muestra ayuda a que el coste de optimización de la
-   augmentation (punto 1 de la sección anterior) pese relativamente menos, aunque con este
-   presupuesto de épocas (early stopping, no un número fijo) tampoco llega a compensarlo del
-   todo.
+2. **La augmentation sigue por detrás del baseline en las dos escalas (84.89% < 88.84%;
+   76.20% < 79.50%)**, pero la brecha **no se estrecha de forma consistente al crecer la
+   muestra** -- 3,30 puntos con la muestra reducida frente a 3,95 con el dataset completo, al
+   contrario de lo que sugería una ejecución anterior de este análisis (con otra semilla), que
+   mostraba la brecha estrechándose. Es el mismo patrón que la sección de robustez frente a la
+   semilla documenta más abajo: la dirección de "constante con la que crece la muestra" no es
+   estable entre semillas, aunque el hecho de que augmentation quede por detrás sí lo es en las
+   combinaciones de semillas probadas.
 
 ![Curva de aprendizaje (dataset completo)](results_full/learning_curve.png)
 
 **Matrices de confusión (test, dataset completo)**:
 
-**Baseline (88.34%)**:
+**Baseline (88.84%)**:
 
 ![Matriz de confusión — baseline (dataset completo)](results_full/confusion_matrix_baseline.png)
 
-**Con augmentation (85.24%)**:
+**Con augmentation (84.89%)**:
 
 ![Matriz de confusión — augmented (dataset completo)](results_full/confusion_matrix_augmented.png)
 
 **Lectura**: "Camisa" sigue siendo, con diferencia, la clase más difícil en ambas versiones
-(68.6% baseline, 41.1% con augmentation, sobre 1.400 camisas de test) — el mismo resultado
+(69.7% baseline, 42.7% con augmentation, sobre 1.400 camisas de test) — el mismo resultado
 conocido de Fashion-MNIST que en la muestra reducida, ahora con mucha más muestra para
 confirmarlo: camisa comparte silueta con camiseta, jersey y abrigo, y sin color ni textura el
 contorno es toda la información disponible. Con augmentation la confusión se dispara: 247 de
-1.400 camisas se leen como "Jersey" (17,6%) y 237 como "Abrigo" (16,9%), frente a 117 y 74
+1.400 camisas se leen como "Abrigo" (17,6%) y 131 como "Jersey" (9,4%), frente a 111 y 111
 respectivamente en el baseline — la augmentation geométrica parece difuminar precisamente los
-detalles de solapa/cuello que distinguen una camisa de un jersey o un abrigo.
+detalles de solapa/cuello que distinguen una camisa de un jersey o un abrigo, aunque -- igual
+que en la muestra reducida -- cuál de las dos (Jersey o Abrigo) se lleva la mayor parte de esa
+confusión varía entre ejecuciones.
 
 ## ¿Explica el flip horizontal por qué la augmentation va peor que el baseline?
 
@@ -200,14 +205,14 @@ es si se aplica el flip.
 
 | | Baseline | Augmented (flip=0.5) | Augmented sin flip (flip=0.0) |
 |---|---|---|---|
-| Muestra reducida (2.400 train) | 79.00% | 74.80% | 75.70% |
-| Dataset completo (42.000 train) | 88.34% | 85.24% | 84.85% |
+| Muestra reducida (2.400 train) | 79.50% | 76.20% | 75.40% |
+| Dataset completo (42.000 train) | 88.84% | 84.89% | 85.49% |
 
 **El flip no explica la brecha.** `augmented_sin_flip` sigue perdiendo frente al baseline en
-las dos escalas (75.70% < 79.00%; 84.85% < 88.34%) -- si el flip fuera la causa real de que la
+las dos escalas (75.40% < 79.50%; 85.49% < 88.84%) -- si el flip fuera la causa real de que la
 augmentation vaya peor, quitarlo debería cerrar esa brecha, y no la cierra en ninguna de las
 dos. El movimiento que sí produce quitar el flip es pequeño y **cambia de signo entre escalas**
-(+0,90 puntos a escala reducida, −0,39 a escala completa) -- del mismo orden que el ruido
+(−0,80 puntos a escala reducida, +0,60 a escala completa) -- del mismo orden que el ruido
 esperable entre ejecuciones (semilla, orden de batches), no una señal consistente sobre la que
 construir una explicación.
 
@@ -221,34 +226,80 @@ directamente (haría falta, por ejemplo, entrenar con más paciencia o un techo 
 alto y comprobar si el gap se cierra), así que se deja como hipótesis, no como conclusión. Un
 resultado negativo sin explicar del todo es más honesto que uno explicado a medias.
 
-**Lo que el flip sí tiene es un efecto real por clase, consistente en las dos escalas -- aunque
-no sea lo que explica el resultado agregado**:
+**Sobre el efecto del flip por clase (Camisa, Jersey, Zapatilla...): se ha retirado el desglose
+detallado que había aquí.** Una versión anterior de este análisis (con otra semilla, antes de
+separar `seed_split`/`seed_modelo`/`SEED_DATOS` como se explica en el
+[README raíz](../README.md)) reportaba efectos direccionales aparentemente consistentes entre
+escalas -- "Camisa siempre peor con flip", "Jersey siempre mejor con flip". Al repetir el
+análisis con la semilla ya separada correctamente, **esos efectos no solo cambiaron de
+magnitud: cambiaron de signo** (Jersey pasa a ir peor con flip en las dos escalas; Camisa deja
+de tener una dirección consistente entre escalas). Mantener una narrativa detallada por clase
+que no sobrevive a un cambio de semilla habría sido presentar ruido como si fuera señal. La
+lectura honesta es la de la sección "Robustez frente a la semilla" de abajo: a nivel agregado
+(augmentation por detrás del baseline) el resultado es estable; a nivel de qué clase concreta
+gana o pierde con el flip, no lo es con una sola ejecución por variante, y no se ha invertido el
+tiempo de cómputo que costaría promediar el efecto del flip por clase sobre varias semillas.
 
-- **"Camisa" es mucho peor con flip**: 13% con flip vs 23% sin flip (muestra reducida); 41,1%
-  con flip vs 48,7% sin flip (dataset completo). El flip agrava justo la confusión que ya era
-  el punto más débil del modelo (ver más arriba) -- probablemente porque muchas camisas de
-  Fashion-MNIST llevan el bolsillo, la solapa o el estampado en un lado concreto, y el flip le
-  quita a la red esa asimetría como pista.
-- **"Jersey" es mucho mejor con flip**: 75% con flip vs 52% sin flip (muestra reducida); 79,2%
-  con flip vs 70,9% sin flip (dataset completo). Aquí el flip parece aportar variedad útil sin
-  destruir ninguna asimetría relevante (un jersey es visualmente casi simétrico).
-- **El resto de clases (incluidas las asimétricas por diseño -- Sandalia, Zapatilla, Botín) no
-  muestran una dirección consistente entre las dos escalas**: por ejemplo Zapatilla mejora sin
-  flip a escala reducida (86% vs 84%) pero empeora sin flip a escala completa (89,9% vs 94,6%)
-  -- el signo se invierte, lo que apunta a ruido más que a un efecto real y estable.
+## Robustez frente a la semilla
 
-Que el efecto en "Camisa" (negativo) y en "Jersey" (positivo, de magnitud parecida) tiendan a
-cancelarse es probablemente la razón de que el efecto del flip sobre la accuracy agregada salga
-tan pequeño y tan poco estable entre escalas -- pero esa cancelación es una coincidencia
-aritmética entre dos clases concretas, no evidencia de que el flip sea "neutro" en general, ni
-tampoco la explicación de por qué la augmentation completa va peor que el baseline.
+Todo lo anterior está basado en una única ejecución por variante (`seed_split=42,
+seed_modelo=42`). Para saber si "baseline gana a augmented" y "el flip no explica la brecha"
+son hallazgos reales o solo lo que tocó con esa semilla concreta, se repite cada variante con
+**5 pares (seed_split, seed_modelo) sorteados de forma independiente**
+(`python run_seed_sweep.py --solo 08-cnn-fullbatch` / `--solo 08-cnn-minibatch`, ver
+[README raíz](../README.md) para la metodología completa — N=5 en vez de 10 porque cada
+ejecución de esta CNN tarda varios minutos).
+
+**Muestra reducida, full-batch:**
+
+| Variante | Media | Desv. típica | Mínimo | Máximo |
+|---|---|---|---|---|
+| Baseline | 79.74% | 0.76% | 78.50% | 80.40% |
+| Augmented | 75.30% | 2.13% | 71.50% | 76.40% |
+| Augmented sin flip | 76.10% | 1.84% | 72.90% | 77.50% |
+
+![Robustez — muestra reducida](results/seed_sweep.png)
+
+![Pérdida por época — muestra reducida](results/seed_sweep_curvas.png)
+
+**Dataset completo, mini-batch:**
+
+| Variante | Media | Desv. típica | Mínimo | Máximo |
+|---|---|---|---|---|
+| Baseline | 88.63% | 0.60% | 87.96% | 89.44% |
+| Augmented | 85.51% | 0.55% | 84.69% | 86.08% |
+| Augmented sin flip | 85.66% | 0.84% | 84.56% | 86.81% |
+
+![Robustez — dataset completo](results_full/seed_sweep.png)
+
+![Pérdida por época — dataset completo](results_full/seed_sweep_curvas.png)
+
+**Lo que se sostiene entre semillas:**
+
+1. **Baseline por delante de las dos variantes con augmentation, en las 5 semillas y en las dos
+   escalas.** El peor caso del baseline (78.50% reducida, 87.96% completa) sigue por encima del
+   mejor caso de `augmented_sin_flip` (77.50% reducida, 86.81% completa) -- los rangos ni
+   siquiera se solapan. La curva de pérdida por época lo confirma visualmente: las 5 líneas
+   azules (baseline) quedan por debajo de las 10 líneas verdes/rojas (augmented/sin flip) casi
+   todo el entrenamiento, en las dos escalas. Este es el hallazgo central del proyecto y no
+   depende de la semilla 42.
+2. **`augmented` y `augmented_sin_flip` se solapan casi por completo en las dos escalas** (71.5–
+   76.4% vs 72.9–77.5% reducida; 84.7–86.1% vs 84.6–86.8% completa) -- confirma con 5 semillas,
+   no solo con una comparación puntual, la conclusión de la sección "¿Explica el flip
+   horizontal...?": el flip no es lo que separa `augmented` del baseline.
+3. **La augmentation añade varianza, no solo peor accuracy media**, sobre todo a escala
+   reducida: desviación típica de 1.8–2.1% en las variantes con augmentation frente a 0.76% en
+   el baseline -- coherente con el punto 1 de la sección "Por qué tiene sentido" más arriba
+   (cada época ve una transformación distinta, un objetivo más ruidoso que optimizar). Con el
+   dataset completo esa diferencia de varianza casi desaparece (0.55–0.84% las tres variantes) --
+   más datos estabiliza el entrenamiento independientemente de si hay augmentation o no.
 
 ## Reproducir
 
 ```bash
 pip install -r ../requirements.txt
-python cnn_fashion_mnist.py        # muestra reducida, full-batch (~15,4 min: 400 épocas x 3 versiones)
-python cnn_fashion_mnist_full.py   # dataset completo, mini-batch (~10,8 min: 33 épocas x 3 versiones)
+python cnn_fashion_mnist.py        # muestra reducida, full-batch (~13,5 min: 3 versiones)
+python cnn_fashion_mnist_full.py   # dataset completo, mini-batch (~8,3 min: 3 versiones)
 ```
 
 ## Limitaciones
@@ -257,9 +308,9 @@ python cnn_fashion_mnist_full.py   # dataset completo, mini-batch (~10,8 min: 33
   con el split completo) y full-batch, precisamente para que el bucle de entrenamiento sea
   simple de leer sin mini-batches de por medio — es una limitación intencionada, no un límite
   real: `cnn_fashion_mnist_full.py` entrena sobre el dataset completo con mini-batches y sube
-  el baseline a 88.34% y el augmented a 85.24% (ver sección "Dataset completo + mini-batches"
-  arriba). Con más muestra la brecha entre baseline y augmented se estrecha (4,20 → 3,10
-  puntos) pero no se cierra dentro de este presupuesto de épocas.
+  el baseline a 88.84% y el augmented a 84.89% (ver sección "Dataset completo + mini-batches"
+  arriba). La augmentation sigue por detrás del baseline en las dos escalas, pero la brecha no
+  se estrecha de forma estable al crecer la muestra (ver esa misma sección).
 - Muestreo por vecino más cercano en `augmentar_lote()` (no interpolación bilineal como
   Keras/TensorFlow) — más simple de implementar a mano, con una pérdida de calidad de imagen
   menor pero no nula.

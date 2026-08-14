@@ -20,14 +20,15 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from capas import ActivacionLeakyReLU, ActivacionSigmoide, CapaDensa, predecir
 
-SEED = 42
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
 
-def main() -> None:
-    np.random.seed(SEED)
-
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split se acepta por consistencia con el resto de proyectos pero no tiene efecto
+    aquí: no hay datos aleatorios que generar (las 4 combinaciones de XOR son el universo
+    completo del problema, no una muestra) ni split que hacer. Solo seed_modelo importa --
+    gobierna la inicialización de pesos -- ver README para el análisis de robustez."""
     # XOR solo tiene 4 combinaciones posibles de entrada -- son universo completo del
     # problema, no una muestra. No hay train/test split: el objetivo aquí no es medir
     # generalización a datos nuevos, sino demostrar que la red aprende una frontera de
@@ -35,10 +36,11 @@ def main() -> None:
     X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
     Y = np.array([[0], [1], [1], [0]])
 
+    rng_modelo = np.random.default_rng(seed_modelo)
     red = [
-        CapaDensa(dim_entrada=2, dim_salida=16, semilla_he=False),
+        CapaDensa(dim_entrada=2, dim_salida=16, semilla_he=False, rng=rng_modelo),
         ActivacionLeakyReLU(),
-        CapaDensa(dim_entrada=16, dim_salida=1, semilla_he=False),
+        CapaDensa(dim_entrada=16, dim_salida=1, semilla_he=False, rng=rng_modelo),
         ActivacionSigmoide(),
     ]
 
@@ -70,6 +72,8 @@ def main() -> None:
         matriz_confusion[real, pred] += 1
 
     metrics = {
+        "seed_split": seed_split,
+        "seed_modelo": seed_modelo,
         "epochs": epochs,
         "loss_final": float(historial_loss[-1]),
         "aciertos": f"{aciertos}/4",
@@ -79,11 +83,16 @@ def main() -> None:
         ],
         "matriz_confusion": matriz_confusion.tolist(),
     }
+
+    if not guardar_graficas:
+        return {**metrics, "historial_loss": historial_loss}
+
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
 
-    print(f"Loss final: {historial_loss[-1]:.6f} | Aciertos: {aciertos}/4")
-    for p in metrics["predicciones"]:
-        print(f"  {p['entrada']} -> objetivo {p['objetivo']}, predicho {p['prediccion']:.4f}")
+    if not quiet:
+        print(f"Loss final: {historial_loss[-1]:.6f} | Aciertos: {aciertos}/4")
+        for p in metrics["predicciones"]:
+            print(f"  {p['entrada']} -> objetivo {p['objetivo']}, predicho {p['prediccion']:.4f}")
 
     # === Gráfico 1: curva de aprendizaje ===
     plt.figure(figsize=(6, 4))
@@ -136,7 +145,10 @@ def main() -> None:
     plt.savefig(RESULTS_DIR / "confusion_matrix.png", dpi=150)
     plt.close()
 
-    print(f"Resultados guardados en {RESULTS_DIR}")
+    if not quiet:
+        print(f"Resultados guardados en {RESULTS_DIR}")
+
+    return {**metrics, "historial_loss": historial_loss}
 
 
 if __name__ == "__main__":

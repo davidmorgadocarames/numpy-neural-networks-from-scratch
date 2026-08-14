@@ -17,16 +17,30 @@ Cada capa expone dos métodos:
 import numpy as np
 
 
+def _normal(rng, shape):
+    """randn de np.random o standard_normal de un Generator, según cuál se use -- así el
+    resto del código no necesita saber si recibió un rng explícito (reproducible con
+    seed_modelo) o ninguno (comportamiento legacy, estado global de np.random)."""
+    return rng.standard_normal(shape) if rng is not None else np.random.randn(*shape)
+
+
+def _uniform(rng, low, high, shape):
+    return rng.uniform(low, high, shape) if rng is not None else np.random.uniform(low, high, shape)
+
+
 class CapaDensa:
     """Capa totalmente conectada: Z = X @ W + b."""
 
-    def __init__(self, dim_entrada, dim_salida, semilla_he=True):
+    def __init__(self, dim_entrada, dim_salida, semilla_he=True, rng=None):
         # Inicialización He (recomendada con LeakyReLU/ReLU): evita que las activaciones
         # exploten o se desvanezcan según crece el número de capas/neuronas.
+        # rng=None (por defecto) mantiene el comportamiento de siempre (estado global de
+        # np.random); pasar un np.random.Generator permite controlar la inicialización de
+        # pesos con una semilla propia (seed_modelo), independiente de la de los datos.
         if semilla_he:
-            self.W = np.random.randn(dim_entrada, dim_salida) * np.sqrt(2.0 / dim_entrada)
+            self.W = _normal(rng, (dim_entrada, dim_salida)) * np.sqrt(2.0 / dim_entrada)
         else:
-            self.W = np.random.uniform(-0.5, 0.5, (dim_entrada, dim_salida))
+            self.W = _uniform(rng, -0.5, 0.5, (dim_entrada, dim_salida))
         self.b = np.zeros((1, dim_salida))
         self.X_entrada = None
         self.Z = None

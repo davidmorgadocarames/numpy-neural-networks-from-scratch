@@ -32,7 +32,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from capas import ActivacionLeakyReLU, CapaDensa, predecir
 
-SEED = 42
+SEED_DATOS = 42  # gobierna solo la generación de datos -- fijo siempre, nunca es argumento
 RESULTS_DIR = Path(__file__).parent / "results"
 RESULTS_DIR.mkdir(exist_ok=True)
 
@@ -43,9 +43,14 @@ PACIENCIA_EARLY_STOP = 200
 MEJORA_MINIMA_RELATIVA = 0.005
 
 
-def main() -> None:
-    np.random.seed(SEED)
-
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split y seed_modelo son independientes entre sí y de SEED_DATOS -- separar las
+    fuentes de aleatoriedad (qué datos existen / cómo se reparten / cómo se inicializa la red)
+    permite medir la varianza de cada una por separado en vez de mezclarlas bajo una sola
+    semilla global (ver README para el análisis de robustez sobre múltiples semillas)."""
+    # Datos: SIEMPRE con SEED_DATOS, vía la API legacy de np.random -- así el dataset (qué 150
+    # casas existen) no cambia nunca, sea cual sea seed_split/seed_modelo.
+    np.random.seed(SEED_DATOS)
     metros_cuadrados = np.random.uniform(40, 240, (150, 1))
     habitaciones = np.random.randint(1, 6, (150, 1)).astype(float)
     X_puro = np.hstack([metros_cuadrados, habitaciones])
@@ -57,8 +62,9 @@ def main() -> None:
     # 90 train (60%) / 30 validación (20%, decide el early stopping) / 30 test (20%, se toca
     # una sola vez, al final). El split se hace ANTES de normalizar para que min/max salgan solo
     # de train (igual que en 03-tipos-clientes) -- si no, la red vería el rango de val/test.
+    rng_split = np.random.default_rng(seed_split)
     indices = np.arange(150)
-    np.random.shuffle(indices)
+    rng_split.shuffle(indices)
     n_train, n_val = 90, 30
     idx_train, idx_val, idx_test = indices[:n_train], indices[n_train:n_train + n_val], indices[n_train + n_val:]
     X_train_raw, X_val_raw, X_test_raw = X_puro[idx_train], X_puro[idx_val], X_puro[idx_test]
@@ -73,10 +79,11 @@ def main() -> None:
                                (Y_val_raw - Y_min) / (Y_max - Y_min),
                                (Y_test_raw - Y_min) / (Y_max - Y_min))
 
+    rng_modelo = np.random.default_rng(seed_modelo)
     red = [
-        CapaDensa(dim_entrada=2, dim_salida=16, semilla_he=False),
+        CapaDensa(dim_entrada=2, dim_salida=16, semilla_he=False, rng=rng_modelo),
         ActivacionLeakyReLU(),
-        CapaDensa(dim_entrada=16, dim_salida=1, semilla_he=False),
+        CapaDensa(dim_entrada=16, dim_salida=1, semilla_he=False, rng=rng_modelo),
     ]
 
     learning_rate = 0.05
@@ -119,18 +126,21 @@ def main() -> None:
             loss_val_referencia = historial_loss_val[epoch - PACIENCIA_EARLY_STOP]
             mejora_relativa = (loss_val_referencia - loss_val) / loss_val_referencia
             if mejora_relativa < MEJORA_MINIMA_RELATIVA:
-                print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
-                      f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
+                if not quiet:
+                    print(f"Early stopping en la época {epoch + 1}: el error de validación lleva "
+                          f"{PACIENCIA_EARLY_STOP} épocas sin mejorar un {MEJORA_MINIMA_RELATIVA:.1%}")
                 break
     else:
-        print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
+        if not quiet:
+            print(f"Entrenamiento completado sin activar el early stopping (llegó a la época {epochs})")
 
     epocas_entrenadas = len(historial_loss_train)
 
     for capa, (W, b) in zip([c for c in red if isinstance(c, CapaDensa)], mejores_pesos):
         capa.W, capa.b = W, b
-    print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
-          f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
+    if not quiet:
+        print(f"Pesos restaurados al mínimo de validación: época {mejor_epoca + 1} "
+              f"(loss_val={mejor_loss_val:.6f}), frente a la época de corte {epocas_entrenadas}")
 
     # === Única vez que se toca el conjunto de test, ya con la red entrenada (pesos del mínimo
     # de validación, no los de la última época entrenada) ===
@@ -141,6 +151,9 @@ def main() -> None:
     mae_euros = float(np.mean(np.abs(precio_pred_test - precio_real_test)))
 
     metrics = {
+        "seed_datos": SEED_DATOS,
+        "seed_split": seed_split,
+        "seed_modelo": seed_modelo,
         "epochs_configuradas": epochs,
         "epochs_entrenadas": epocas_entrenadas,
         "epoca_mejor_val": mejor_epoca + 1,
@@ -152,8 +165,13 @@ def main() -> None:
         "n_val": int(len(X_val)),
         "n_test": int(len(X_test)),
     }
+
+    if not guardar_graficas:
+        return {**metrics, "historial_loss_val": historial_loss_val}
+
     (RESULTS_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    print(f"MAE en test: {mae_euros:.2f} EUR")
+    if not quiet:
+        print(f"MAE en test: {mae_euros:.2f} EUR")
 
     # === Gráfico 1: curva de aprendizaje (train + validación, en euros desnormalizados) ===
     error_euros_train = np.sqrt(historial_loss_train) * (Y_max - Y_min)
@@ -208,7 +226,10 @@ def main() -> None:
     plt.savefig(RESULTS_DIR / "predicted_vs_real.png", dpi=150)
     plt.close()
 
-    print(f"Resultados guardados en {RESULTS_DIR}")
+    if not quiet:
+        print(f"Resultados guardados en {RESULTS_DIR}")
+
+    return {**metrics, "historial_loss_val": historial_loss_val}
 
 
 if __name__ == "__main__":
