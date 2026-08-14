@@ -114,14 +114,14 @@ aunque la red esté bien entrenada.
 
 ## Robustez frente a la semilla
 
-Repitiendo cada variante con **10 pares (seed_split, seed_modelo) sorteados de forma
-independiente** (`python run_seed_sweep.py --solo 07-digitos-fullbatch` /
-`--solo 07-digitos-minibatch`, ver [README raíz](../README.md)):
+Repitiendo cada variante con **20 pares (seed_split, seed_modelo) sorteados de forma
+independiente** (`python run_seed_sweep.py --solo 07-digitos-fullbatch --n 20` /
+`--solo 07-digitos-minibatch --n 20`, ver [README raíz](../README.md)):
 
-| Variante | Accuracy media ± desv. típica | Rango (10 semillas) |
+| Variante | Accuracy media ± desv. típica | Rango (20 semillas) |
 |---|---|---|
-| Muestra reducida, full-batch | 88.50% ± 1.45% | 86.33%–91.00% |
-| Dataset completo, mini-batch | 97.46% ± 0.21% | 97.18%–97.73% |
+| Muestra reducida, full-batch | 88.23% ± 1.76% | 83.33%–90.67% |
+| Dataset completo, mini-batch | 97.46% ± 0.24% | 96.71%–97.80% |
 
 ![Robustez — muestra reducida, full-batch](results/seed_sweep.png)
 
@@ -135,8 +135,8 @@ La versión reducida (1.200 imágenes) tiene ~7 veces más varianza entre semill
 dataset completo — coherente con lo esperable: con menos datos, tanto la inicialización como
 qué 300 imágenes concretas caen en test pesan proporcionalmente más en el resultado final. La
 comparación de la sección 2 (+8.5 puntos a favor del dataset completo) es robusta a la semilla:
-incluso en su peor caso (86.33%), la versión reducida sigue muy por debajo del peor caso de la
-versión completa (97.18%) — los rangos ni siquiera se solapan.
+incluso en su peor caso (83.33%), la versión reducida sigue muy por debajo del peor caso de la
+versión completa (96.71%) — los rangos ni siquiera se solapan.
 
 ## Reproducir
 

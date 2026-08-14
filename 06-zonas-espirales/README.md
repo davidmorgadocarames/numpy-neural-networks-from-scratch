@@ -92,17 +92,17 @@ problema lo exigiera.
 
 ## Robustez frente a la semilla
 
-Repitiendo el entrenamiento con **10 pares (seed_split, seed_modelo) sorteados de forma
-independiente** (`python run_seed_sweep.py --solo 06-espirales`, ver
+Repitiendo el entrenamiento con **20 pares (seed_split, seed_modelo) sorteados de forma
+independiente** (`python run_seed_sweep.py --solo 06-espirales --n 20`, ver
 [README raíz](../README.md)):
 
 | Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
 |---|---|---|---|---|---|
-| Accuracy en test | 98.44% | 1.50% | 95.56% | 100% | 10 |
+| Accuracy en test | 98.06% | 1.34% | 95.56% | 100% | 20 |
 
 ![Robustez frente a la semilla](results/seed_sweep.png)
 
-![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+![Pérdida por época, las 20 semillas superpuestas](results/seed_sweep_curvas.png)
 
 La ejecución canónica documentada arriba (97.78%) está cerca de la media, no en un extremo —
 resultado estable, coherente con que 3 brazos de espiral con ruido moderado no es un problema

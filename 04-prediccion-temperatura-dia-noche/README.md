@@ -64,16 +64,16 @@ el ciclo día/noche real, incluyendo el pico y el valle que nunca vio durante el
 
 El split aquí es cronológico (train/val/test en orden temporal fijo), no aleatorio, así que
 solo la inicialización de pesos (`seed_modelo`) puede mover el resultado. Repitiendo el
-entrenamiento con **10 semillas de inicialización distintas**
-(`python run_seed_sweep.py --solo 04-temperatura`, ver [README raíz](../README.md)):
+entrenamiento con **20 semillas de inicialización distintas**
+(`python run_seed_sweep.py --solo 04-temperatura --n 20`, ver [README raíz](../README.md)):
 
 | Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
 |---|---|---|---|---|---|
-| MAE en test (°C) | 0.89 | 0.03 | 0.83 | 0.91 | 10 |
+| MAE en test (°C) | 0.88 | 0.02 | 0.83 | 0.91 | 20 |
 
 ![Robustez frente a la semilla](results/seed_sweep.png)
 
-![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+![Pérdida por época, las 20 semillas superpuestas](results/seed_sweep_curvas.png)
 
 Muy estable — consistente con ser un problema de regresión suave (una neurona ve solo 3 valores
 de entrada) y sin el ruido de un split aleatorio que sí afecta a otros proyectos del

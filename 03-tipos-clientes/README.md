@@ -49,30 +49,27 @@ VIPs→VIPs) y las celdas fuera de la diagonal están todas a 0, es decir, cero 
 ## Robustez frente a la semilla
 
 Con clases tan bien separadas cabría esperar 100% de accuracy con cualquier semilla. Repitiendo
-el entrenamiento con **10 pares (seed_split, seed_modelo) sorteados de forma independiente**
-(`python run_seed_sweep.py --solo 03-clientes`, ver [README raíz](../README.md)):
+el entrenamiento con **20 pares (seed_split, seed_modelo) sorteados de forma independiente**
+(`python run_seed_sweep.py --solo 03-clientes --n 20`, ver [README raíz](../README.md)):
 
 | Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
 |---|---|---|---|---|---|
-| Accuracy en test | 93.75% | 19.76% | 37.50% | 100% | 10 |
+| Accuracy en test | 96.25% | 14.93% | 33.33% | 100% | 20 |
 
 ![Robustez frente a la semilla](results/seed_sweep.png)
 
-![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+![Pérdida por época, las 20 semillas superpuestas](results/seed_sweep_curvas.png)
 
-9 de las 10 semillas llegan a 100%, pero una colapsa a 37.5% — es la curva que corta en seco
-poco después de la época 200 en la gráfica de arriba, mientras las otras 9 siguen bajando hasta
-la 3000. Se diagnosticó la semilla que falla ejecutándola de forma aislada: el early stopping
-se activa en la **época 201** — el corte más temprano posible, dado `PACIENCIA_EARLY_STOP=200`
-— con `loss_val=1.10` (frente a ~0.19 en una ejecución normal de 3000 épocas). No es un
-problema de separabilidad de los datos (la matriz de confusión de esa ejecución,
-`[[0,8,0],[2,6,0],[5,0,3]]`, muestra una red que apenas ha empezado a diferenciar clases, no
-una que las confunda genuinamente): con esa inicialización concreta, la mejora de la validación
-en las primeras 200 épocas es tan lenta que no supera el umbral relativo del 0.5%, y el
-criterio de parada (una ventana de épocas fija, no adaptativa) corta el entrenamiento casi
-antes de empezar. Es una limitación real del criterio de early stopping tal como está
-implementado aquí (ventana absoluta de épocas, igual para cualquier velocidad de convergencia
-inicial), no del dataset ni de la arquitectura.
+18 de las 20 semillas llegan a 100%, pero dos se quedan cortas — y por dos motivos distintos,
+diagnosticados ejecutándolas de forma aislada. La peor (33.3%) sí reproduce el mecanismo
+descrito más abajo: el early stopping se activa en la **época 415** con `loss_val=1.10`, y la
+red termina prediciendo la misma clase para las 24 muestras de test (matriz de confusión
+`[[0,0,8],[0,0,8],[0,0,8]]`) — un colapso completo, no una confusión parcial. La segunda
+(91.7%, matriz `[[8,0,0],[2,6,0],[0,0,8]]`) es un caso distinto: entrena las 3000 épocas
+completas sin activarse el early stopping y solo comete 2 errores reales, una simple varianza
+de generalización normal, no un fallo del criterio de parada. Es decir: con más semillas (20
+frente a las 10 originales) aparece un segundo modo de fallo más leve que con N=10 no se había
+observado, además de confirmar el colapso por early-stopping prematuro ya diagnosticado.
 
 ## Reproducir
 
@@ -87,6 +84,6 @@ python customer_classifier.py
   que el problema no sea trivial) — no son datos reales de una tienda.
 - El criterio de early stopping (ventana fija de `PACIENCIA_EARLY_STOP` épocas) puede cortar
   prematuramente si una inicialización concreta arranca con mejora lenta en la validación —
-  medido arriba: 1 de 10 semillas corta en la época 201 con un resultado muy por debajo del
-  resto. Una ventana adaptativa (o un mínimo de épocas antes de poder activarse) mitigaría esto,
+  medido arriba: 1 de 20 semillas corta prematuramente (época 415) con un resultado muy por
+  debajo del resto. Una ventana adaptativa (o un mínimo de épocas antes de poder activarse) mitigaría esto,
   pero no se ha implementado para mantener el criterio idéntico al resto del repositorio.

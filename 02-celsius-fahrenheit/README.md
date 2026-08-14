@@ -79,22 +79,22 @@ qué valores de X le tocaron a cada conjunto.
 ## Robustez frente a la semilla
 
 La sección anterior habla de "con otra semilla de reparto el resultado podría salir al revés" —
-en vez de dejarlo en especulación, se repite el entrenamiento con **10 pares (seed_split,
-seed_modelo) sorteados de forma independiente** (`python run_seed_sweep.py --solo 02-celsius`,
-ver [README raíz](../README.md) para la metodología), manteniendo siempre los mismos 30 datos
-(`SEED_DATOS` fijo):
+en vez de dejarlo en especulación, se repite el entrenamiento con **20 pares (seed_split,
+seed_modelo) sorteados de forma independiente** (`python run_seed_sweep.py --solo 02-celsius
+--n 20`, ver [README raíz](../README.md) para la metodología), manteniendo siempre los mismos 30
+datos (`SEED_DATOS` fijo):
 
 | Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
 |---|---|---|---|---|---|
-| MAE en test (°F) | 0.0226 | 0.0539 | 0.0014 | 0.1755 | 10 |
+| MAE en test (°F) | 0.0139 | 0.0382 | 0.0014 | 0.1756 | 20 |
 
 ![Robustez frente a la semilla](results/seed_sweep.png)
 
-![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+![Pérdida por época, las 20 semillas superpuestas](results/seed_sweep_curvas.png)
 
 Confirma con datos la advertencia de la sección de
-arriba: 9 de las 10 semillas caen entre 0.001 y 0.014 °F (mediana ≈ 0.005 °F), pero una sola
-combinación de semillas dispara el error a 0.18 °F — más de diez veces peor que la mediana. Con
+arriba: 19 de las 20 semillas caen entre 0.001 y 0.014 °F (mediana ≈ 0.005 °F), pero una sola
+combinación de semillas dispara el error a 0.18 °F — más de treinta veces peor que la mediana. Con
 solo 6 ejemplos de test, un reparto que deje ahí los valores de Celsius con mayor magnitud (ver
 la explicación de arriba sobre `|X|` y el error residual de `W`/`b`) basta para desestabilizar
 la cifra final, aunque el modelo aprendido (`W`, `b`) sea prácticamente idéntico en todos los
@@ -111,7 +111,7 @@ python celsius_fahrenheit.py
 
 - Con solo 30 ejemplos en total, un split de tres partes deja validación y test en 6 ejemplos
   cada uno — suficiente para ilustrar el mecanismo, pero la cifra de MAE en test tiene alta
-  varianza, **medida arriba** (rango 0.0014–0.1755 °F sobre 10 semillas): con 6 ejemplos de
+  varianza, **medida arriba** (rango 0.0014–0.1756 °F sobre 20 semillas): con 6 ejemplos de
   test, qué valores concretos caen ahí pesa más que la calidad del modelo aprendido. El punto de
   este proyecto es demostrar la mecánica de la regresión y el split correcto, no una estimación
   de error robusta.

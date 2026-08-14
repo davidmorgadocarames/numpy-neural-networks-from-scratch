@@ -245,18 +245,18 @@ tiempo de cómputo que costaría promediar el efecto del flip por clase sobre va
 Todo lo anterior está basado en una única ejecución por variante (`seed_split=42,
 seed_modelo=42`). Para saber si "baseline gana a augmented" y "el flip no explica la brecha"
 son hallazgos reales o solo lo que tocó con esa semilla concreta, se repite cada variante con
-**5 pares (seed_split, seed_modelo) sorteados de forma independiente**
-(`python run_seed_sweep.py --solo 08-cnn-fullbatch` / `--solo 08-cnn-minibatch`, ver
-[README raíz](../README.md) para la metodología completa — N=5 en vez de 10 porque cada
-ejecución de esta CNN tarda varios minutos).
+**20 pares (seed_split, seed_modelo) sorteados de forma independiente**
+(`python run_seed_sweep.py --solo 08-cnn-fullbatch --n 20` / `--solo 08-cnn-minibatch --n 20`,
+ver [README raíz](../README.md) para la metodología completa — mismo N que el resto del
+repositorio, pese al coste de cómputo: ~5h y ~2.4h respectivamente).
 
 **Muestra reducida, full-batch:**
 
 | Variante | Media | Desv. típica | Mínimo | Máximo |
 |---|---|---|---|---|
-| Baseline | 79.74% | 0.76% | 78.50% | 80.40% |
-| Augmented | 75.30% | 2.13% | 71.50% | 76.40% |
-| Augmented sin flip | 76.10% | 1.84% | 72.90% | 77.50% |
+| Baseline | 80.58% | 1.22% | 77.50% | 82.50% |
+| Augmented | 76.53% | 1.45% | 74.40% | 79.60% |
+| Augmented sin flip | 77.04% | 1.53% | 74.90% | 79.60% |
 
 ![Robustez — muestra reducida](results/seed_sweep.png)
 
@@ -266,33 +266,42 @@ ejecución de esta CNN tarda varios minutos).
 
 | Variante | Media | Desv. típica | Mínimo | Máximo |
 |---|---|---|---|---|
-| Baseline | 88.63% | 0.60% | 87.96% | 89.44% |
-| Augmented | 85.51% | 0.55% | 84.69% | 86.08% |
-| Augmented sin flip | 85.66% | 0.84% | 84.56% | 86.81% |
+| Baseline | 88.39% | 0.58% | 87.31% | 89.24% |
+| Augmented | 85.08% | 0.98% | 82.44% | 86.64% |
+| Augmented sin flip | 85.69% | 0.84% | 83.98% | 87.66% |
 
 ![Robustez — dataset completo](results_full/seed_sweep.png)
 
 ![Pérdida por época — dataset completo](results_full/seed_sweep_curvas.png)
 
-**Lo que se sostiene entre semillas:**
+**Lo que se sostiene entre semillas (y lo que cambia al pasar de N=5 a N=20):**
 
-1. **Baseline por delante de las dos variantes con augmentation, en las 5 semillas y en las dos
-   escalas.** El peor caso del baseline (78.50% reducida, 87.96% completa) sigue por encima del
-   mejor caso de `augmented_sin_flip` (77.50% reducida, 86.81% completa) -- los rangos ni
-   siquiera se solapan. La curva de pérdida por época lo confirma visualmente: las 5 líneas
-   azules (baseline) quedan por debajo de las 10 líneas verdes/rojas (augmented/sin flip) casi
-   todo el entrenamiento, en las dos escalas. Este es el hallazgo central del proyecto y no
-   depende de la semilla 42.
-2. **`augmented` y `augmented_sin_flip` se solapan casi por completo en las dos escalas** (71.5–
-   76.4% vs 72.9–77.5% reducida; 84.7–86.1% vs 84.6–86.8% completa) -- confirma con 5 semillas,
+1. **Baseline por delante de las dos variantes con augmentation en media, en las dos escalas —
+   pero con N=20 aparece un solape en los extremos que con N=5 no se veía.** Las medias siguen
+   claramente separadas (80.58% vs 77.04% reducida, 3.5 puntos; 88.39% vs 85.69% completa, 2.7
+   puntos -- varias desviaciones típicas de distancia en ambos casos). Pero el peor caso del
+   baseline ya no queda por encima del mejor caso de `augmented_sin_flip`: 3 de las 20 semillas
+   de baseline (77.5–79.4% reducida) caen por debajo de su mejor resultado (79.6%), y 2 de 20
+   (87.31–87.53% completa) caen por debajo de su mejor resultado (87.66%). Con N=5 los rangos no
+   se solapaban y esta sección lo presentaba como un hallazgo sin matices; con cuatro veces más
+   semillas se ve que las colas sí se tocan un poco, aunque la tendencia central (que es lo que
+   importa para "¿augmentation ayuda aquí?") no cambia. La curva de pérdida por época lo sigue
+   confirmando visualmente: las 20 líneas azules (baseline) quedan por debajo de las 40 líneas
+   verdes/rojas (augmented/sin flip) casi todo el entrenamiento, en las dos escalas.
+2. **`augmented` y `augmented_sin_flip` se solapan casi por completo en las dos escalas** (74.4–
+   79.6% vs 74.9–79.6% reducida; 82.4–86.6% vs 84.0–87.7% completa) -- confirma con 20 semillas,
    no solo con una comparación puntual, la conclusión de la sección "¿Explica el flip
    horizontal...?": el flip no es lo que separa `augmented` del baseline.
-3. **La augmentation añade varianza, no solo peor accuracy media**, sobre todo a escala
-   reducida: desviación típica de 1.8–2.1% en las variantes con augmentation frente a 0.76% en
-   el baseline -- coherente con el punto 1 de la sección "Por qué tiene sentido" más arriba
-   (cada época ve una transformación distinta, un objetivo más ruidoso que optimizar). Con el
-   dataset completo esa diferencia de varianza casi desaparece (0.55–0.84% las tres variantes) --
-   más datos estabiliza el entrenamiento independientemente de si hay augmentation o no.
+3. **La augmentation añade varianza, pero la brecha frente al baseline es más pequeña de lo que
+   sugería N=5, en las dos escalas.** Reducida: desviación típica de 1.45–1.53% en las variantes
+   con augmentation frente a 1.22% en el baseline (~1.2x, no los ~2.5x que sugería N=5 con
+   0.76% de baseline). Completa: 0.84–0.98% frente a 0.58% (~1.5x) -- aquí N=5 había sugerido que
+   la diferencia de varianza "casi desaparecía" con el dataset completo (0.55–0.84% muy
+   parejo entre las tres variantes); con N=20 se ve que la augmentation sigue añadiendo más
+   varianza que el baseline también a esta escala, solo que de forma menos dramática que en la
+   muestra reducida. Es un buen ejemplo de por qué N=5 era un tamaño de muestra arriesgado para
+   afirmaciones sobre varianza en concreto (aunque bastara para la comparación de medias del
+   punto 1).
 
 ## Reproducir
 

@@ -38,7 +38,7 @@ gradiente) sobre las mismas 90 casas de train, evaluada sobre las mismas 30 de t
 
 **Las dos están prácticamente empatadas** (1.171 € de diferencia, ~10%) — y, como se ve en la
 sección de robustez más abajo, esa diferencia es mucho menor que la varianza que introduce por
-sí sola la semilla de split/inicialización (desviación típica ±1.561 € sobre 10 semillas): en
+sí sola la semilla de split/inicialización (desviación típica ±1.696 € sobre 20 semillas): en
 otro reparto de los datos perfectamente podría ganar la regresión lineal, como pasaba en una
 versión anterior de este análisis. No hay que leer "quién gana en este split concreto" como una
 conclusión fuerte. Lo que sí es sólido es que ambas están en el mismo orden de magnitud, lo cual
@@ -90,24 +90,25 @@ conjunto de test:
 
 ## Robustez frente a la semilla
 
-Repitiendo el entrenamiento con **10 pares (seed_split, seed_modelo) sorteados de forma
-independiente** (`python run_seed_sweep.py --solo 05-casas`, ver [README raíz](../README.md)),
-manteniendo siempre las mismas 150 casas (`SEED_DATOS` fijo):
+Repitiendo el entrenamiento con **20 pares (seed_split, seed_modelo) sorteados de forma
+independiente** (`python run_seed_sweep.py --solo 05-casas --n 20`, ver
+[README raíz](../README.md)), manteniendo siempre las mismas 150 casas (`SEED_DATOS` fijo):
 
 | Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
 |---|---|---|---|---|---|
-| MAE en test (€) | 12.190 | 1.561 | 10.326 | 15.090 | 10 |
+| MAE en test (€) | 11.907 | 1.696 | 8.136 | 15.178 | 20 |
 
 ![Robustez frente a la semilla](results/seed_sweep.png)
 
-![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+![Pérdida por época, las 20 semillas superpuestas](results/seed_sweep_curvas.png)
 
-El MAE de la ejecución canónica documentada arriba (10.299 €) está en el extremo bueno de ese
-rango, no en
-la mediana — con solo 30 casas de test, qué 30 concretas caen ahí pesa bastante en el resultado
-final. Es la razón por la que la comparación con la regresión lineal de la sección anterior no
-se puede leer como un veredicto definitivo: la diferencia entre ambos modelos (~1.171 €) es
-menor que la propia desviación típica de la red frente a la semilla (1.561 €).
+El MAE de la ejecución canónica documentada arriba (10.299 €) sigue en el extremo bueno de ese
+rango (mejor que 16 de las 20 semillas), aunque ya no tan cerca del mínimo absoluto (8.136 €)
+como sugería la muestra más pequeña — con solo 30 casas de test, qué 30 concretas caen ahí pesa
+bastante en el resultado final. Es la razón por la que la comparación con la regresión lineal de
+la sección anterior no se puede leer como un veredicto definitivo: la diferencia entre ambos
+modelos (~1.171 €) sigue siendo menor que la propia desviación típica de la red frente a la
+semilla (1.696 €).
 
 ## Reproducir
 

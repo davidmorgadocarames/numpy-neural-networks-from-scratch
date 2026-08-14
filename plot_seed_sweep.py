@@ -24,17 +24,17 @@ ROOT = Path(__file__).parent
 # (nombre_json, xlabel, título, ruta_salida)
 UNIDADES_SIMPLES = [
     ("01-compuertas-logicas-xor/results/metrics_seed_sweep.json", "Loss final",
-     "01 — XOR: loss final sobre 10 semillas", "01-compuertas-logicas-xor/results/seed_sweep.png"),
+     "01 — XOR: loss final sobre 20 semillas", "01-compuertas-logicas-xor/results/seed_sweep.png"),
     ("02-celsius-fahrenheit/results/metrics_seed_sweep.json", "MAE en test (°F)",
-     "02 — Celsius→Fahrenheit: MAE sobre 10 semillas", "02-celsius-fahrenheit/results/seed_sweep.png"),
+     "02 — Celsius→Fahrenheit: MAE sobre 20 semillas", "02-celsius-fahrenheit/results/seed_sweep.png"),
     ("03-tipos-clientes/results/metrics_seed_sweep.json", "Accuracy en test",
-     "03 — Tipos de cliente: accuracy sobre 10 semillas", "03-tipos-clientes/results/seed_sweep.png"),
+     "03 — Tipos de cliente: accuracy sobre 20 semillas", "03-tipos-clientes/results/seed_sweep.png"),
     ("04-prediccion-temperatura-dia-noche/results/metrics_seed_sweep.json", "MAE en test (°C)",
-     "04 — Temperatura día/noche: MAE sobre 10 semillas", "04-prediccion-temperatura-dia-noche/results/seed_sweep.png"),
+     "04 — Temperatura día/noche: MAE sobre 20 semillas", "04-prediccion-temperatura-dia-noche/results/seed_sweep.png"),
     ("05-precio-casas/results/metrics_seed_sweep.json", "MAE en test (€)",
-     "05 — Precio de una casa: MAE sobre 10 semillas", "05-precio-casas/results/seed_sweep.png"),
+     "05 — Precio de una casa: MAE sobre 20 semillas", "05-precio-casas/results/seed_sweep.png"),
     ("06-zonas-espirales/results/metrics_seed_sweep.json", "Accuracy en test",
-     "06 — Zonas de espirales: accuracy sobre 10 semillas", "06-zonas-espirales/results/seed_sweep.png"),
+     "06 — Zonas de espirales: accuracy sobre 20 semillas", "06-zonas-espirales/results/seed_sweep.png"),
 ]
 
 COLOR_UNICO = "#4C72B0"
@@ -111,10 +111,10 @@ def main():
     # 07: dos variantes en carpetas distintas (results / results_full), un gráfico cada una
     for ruta_json, nombre_var, xlabel, titulo, ruta_salida in [
         ("07-reconocimiento-digitos/results/metrics_seed_sweep.json", "full-batch", "Accuracy en test",
-         "07 — Dígitos (muestra reducida, full-batch): accuracy sobre 10 semillas",
+         "07 — Dígitos (muestra reducida, full-batch): accuracy sobre 20 semillas",
          "07-reconocimiento-digitos/results/seed_sweep.png"),
         ("07-reconocimiento-digitos/results_full/metrics_seed_sweep.json", "mini-batch", "Accuracy en test",
-         "07 — Dígitos (dataset completo, mini-batch): accuracy sobre 10 semillas",
+         "07 — Dígitos (dataset completo, mini-batch): accuracy sobre 20 semillas",
          "07-reconocimiento-digitos/results_full/seed_sweep.png"),
     ]:
         ruta_json_abs = ROOT / ruta_json

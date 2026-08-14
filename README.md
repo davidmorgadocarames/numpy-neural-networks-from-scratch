@@ -13,16 +13,29 @@ sabiendo qué hace realmente por debajo.
 
 ## Resultados de un vistazo
 
-| # | Proyecto | Tipo | Resultado en test |
-|---|---|---|---|
-| 01 | [Compuerta XOR](01-compuertas-logicas-xor/) | Clasificación binaria | 4/4 aciertos, loss 0.0016 |
-| 02 | [Celsius → Fahrenheit](02-celsius-fahrenheit/) | Regresión | MAE 0.0015 °F |
-| 03 | [Tipos de cliente](03-tipos-clientes/) | Clasificación (3 clases) | 100% accuracy |
-| 04 | [Temperatura día/noche](04-prediccion-temperatura-dia-noche/) | Regresión (serie temporal) | MAE 0.88 °C |
-| 05 | [Precio de una casa](05-precio-casas/) | Regresión | MAE 10.299 € |
-| 06 | [Zonas de espirales](06-zonas-espirales/) | Clasificación (3 clases) | 97.78% accuracy |
-| 07 | [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/) | Clasificación (10 clases) | 89.00% accuracy (97.46% con dataset completo, ver abajo) |
-| 08 | [CNN Fashion-MNIST: baseline vs augmentation](08-cnn-fashion-mnist/) | Clasificación (10 clases) | 79.50% vs 76.20% (88.84% vs 84.89% con dataset completo, ver abajo) |
+**Antes de leer la tabla:** la columna "Resultado en test" es una única ejecución con semilla
+fija (42) — una sola semilla puede tener suerte o mala suerte, y en algunos proyectos la
+diferencia es grande: 03-tipos-clientes marca 100% con la semilla 42, pero repitiendo el
+entrenamiento con 20 semillas independientes 2 de ellas no llegan ni al 92% (una colapsa a
+33%); 05-precio-casas marca 10.299 € pero el rango real sobre esas mismas 20 semillas es
+8.136–15.178 €. Por eso la tabla incluye también la media ± desviación típica sobre 20 semillas
+independientes de cada proyecto — metodología completa en "Metodología: por qué tres semillas"
+más abajo, detalle y gráficas en la sección "Robustez frente a la semilla" de cada README:
+
+| # | Proyecto | Tipo | Resultado en test (semilla 42) | Media ± σ (N=20 semillas) |
+|---|---|---|---|---|
+| 01 | [Compuerta XOR](01-compuertas-logicas-xor/) | Clasificación binaria | 4/4 aciertos, loss 0.0016 | 0.0017 ± 0.0006 |
+| 02 | [Celsius → Fahrenheit](02-celsius-fahrenheit/) | Regresión | MAE 0.0015 °F | 0.0139 ± 0.0382 °F |
+| 03 | [Tipos de cliente](03-tipos-clientes/) | Clasificación (3 clases) | 100% accuracy | 96.25% ± 14.93% |
+| 04 | [Temperatura día/noche](04-prediccion-temperatura-dia-noche/) | Regresión (serie temporal) | MAE 0.88 °C | 0.88 ± 0.02 °C |
+| 05 | [Precio de una casa](05-precio-casas/) | Regresión | MAE 10.299 € | 11.907 € ± 1.696 € |
+| 06 | [Zonas de espirales](06-zonas-espirales/) | Clasificación (3 clases) | 97.78% accuracy | 98.06% ± 1.34% |
+| 07 | [Dígitos manuscritos (MNIST)](07-reconocimiento-digitos/) | Clasificación (10 clases) | 89.00% accuracy (97.46% con dataset completo, ver abajo) | 88.23% ± 1.76% (97.46% ± 0.24% completo) |
+| 08 | [CNN Fashion-MNIST: baseline vs augmentation](08-cnn-fashion-mnist/) | Clasificación (10 clases) | 79.50% vs 76.20% (88.84% vs 84.89% con dataset completo, ver abajo) | 80.58% ± 1.22% (baseline, muestra reducida — ver README del proyecto para augmented y dataset completo) |
+
+La desviación típica de 02 (±0.0382 °F) es mayor que su propia media (0.0139 °F) porque un solo
+caso atípico entre 20 domina el número — no es un error de la tabla, es precisamente el tipo de
+cosa que una sola cifra "de un vistazo" no deja ver (detalle en el README del proyecto).
 
 Los proyectos 07 y 08 tienen además una variante `_full` (`digit_classifier_full.py`,
 `cnn_fashion_mnist_full.py`) entrenada sobre el dataset **completo** (70.000 imágenes) por
@@ -238,8 +251,9 @@ frente a la semilla, no una técnica con nombre propio ni una rejilla cruzada: c
 aleatorias no hay ninguna relación de orden entre "semilla 3" y "semilla 4" que una tabla o un
 mapa de calor pudiera mostrar con sentido, así que el resultado se reporta como
 media ± desviación típica (y a veces el rango completo, cuando hay valores atípicos que vale la
-pena señalar). N=10 en los proyectos 01-07; N=5 en el 08 porque cada ejecución de su CNN tarda
-varios minutos. [`plot_seed_sweep.py`](plot_seed_sweep.py) genera, a partir de esos datos, un
+pena señalar). N=20 en las 10 unidades del repositorio (incluido el 08, pese a que cada
+ejecución de su CNN tarda varios minutos y el barrido completo de sus dos variantes ronda las
+7-8 horas de cómputo). [`plot_seed_sweep.py`](plot_seed_sweep.py) genera, a partir de esos datos, un
 dot plot con las N ejecuciones y su media (`seed_sweep.png`); `run_seed_sweep.py` genera además,
 en la misma pasada, una gráfica con las N curvas de pérdida de validación superpuestas en escala
 logarítmica (`seed_sweep_curvas.png`) — la forma de cada curva (dónde converge, si corta antes)
@@ -258,9 +272,10 @@ sección "Robustez frente a la semilla" de su propio README, con los datos crudo
   datasets grandes sin reescribir en un framework de producción (TensorFlow/Keras, PyTorch...).
 - Con datasets tan pequeños como los de 02 (30 ejemplos) o 05 (150), separar un tercer split
   de validación deja mucha varianza en la cifra final de test — **medido, no solo advertido**:
-  ver la sección "Robustez frente a la semilla" de cada README (02 llega a variar más de 10x
-  entre semillas, de 0.0014 a 0.18 °F de MAE). El objetivo de estos proyectos es demostrar el
-  mecanismo y la metodología correcta, no una estimación de error robusta a gran escala.
+  ver la sección "Robustez frente a la semilla" de cada README (02 llega a variar más de treinta
+  veces respecto a su mediana entre semillas, de 0.0014 a 0.1756 °F de MAE). El objetivo de
+  estos proyectos es demostrar el mecanismo y la metodología correcta, no una estimación de
+  error robusta a gran escala.
 
 ## Licencia
 

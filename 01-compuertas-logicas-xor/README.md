@@ -46,17 +46,17 @@ qué orden se procesan los datos...), así que un único run con una sola semill
 resultado es representativo o si tuvo suerte con esa semilla en concreto. Aquí se separan en
 `seed_split` (sin efecto en este proyecto: las 4 combinaciones de XOR son el universo completo,
 no hay split que hacer) y `seed_modelo` (gobierna la inicialización de los pesos), y se repite
-el entrenamiento con **10 semillas de inicialización distintas**, sorteadas de forma
-independiente (`python run_seed_sweep.py --solo 01-xor`, ver [README raíz](../README.md) para
-la metodología completa):
+el entrenamiento con **20 semillas de inicialización distintas**, sorteadas de forma
+independiente (`python run_seed_sweep.py --solo 01-xor --n 20`, ver [README raíz](../README.md)
+para la metodología completa):
 
 | Métrica | Media | Desv. típica | Mínimo | Máximo | N semillas |
 |---|---|---|---|---|---|
-| Loss final | 0.0017 | 0.0006 | 0.0013 | 0.0024 | 10 |
+| Loss final | 0.0017 | 0.0006 | 0.0013 | 0.0036 | 20 |
 
 ![Robustez frente a la semilla](results/seed_sweep.png)
 
-![Pérdida por época, las 10 semillas superpuestas](results/seed_sweep_curvas.png)
+![Pérdida por época, las 20 semillas superpuestas](results/seed_sweep_curvas.png)
 
 La red converge de forma consistente independientemente de la inicialización, coherente con ser
 el problema más simple del repositorio.

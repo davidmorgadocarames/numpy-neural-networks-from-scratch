@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).parent
-N_SEEDS_DEFAULT = 10
+N_SEEDS_DEFAULT = 20
 COLORES_VARIANTES = {"baseline": "#4C72B0", "augmented": "#55A868", "augmented_sin_flip": "#C44E52",
                       "unico": "#4C72B0"}
 
