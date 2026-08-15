@@ -79,11 +79,50 @@ Muy estable — consistente con ser un problema de regresión suave (una neurona
 de entrada) y sin el ruido de un split aleatorio que sí afecta a otros proyectos del
 repositorio.
 
+## ¿Es real el patrón, o serviría cualquier ruido? (test de permutación)
+
+Esto es una pregunta **distinta** a la de la sección anterior. El seed sweep responde "¿es
+estable mi entrenamiento?" variando la inicialización de los pesos sobre los mismos datos. Esto
+responde "¿lo que la red aprendió es real, o conseguiría un resultado parecido con cualquier
+ruido que tuviera la misma media y varianza?" — y para eso hay que variar los datos, no la
+inicialización.
+
+**Metodología**: se toma la serie de 192 temperaturas reales y se baraja por completo (mismos
+valores, misma media y varianza, pero sin ciclo día/noche) 1000 veces, con un orden distinto
+cada vez. Cada barajado se entrena con la receta exacta del proyecto (misma arquitectura, mismo
+split 60/20/20, misma normalización, mismo early stopping) y siempre con la **misma
+`seed_modelo`** en las 1000 repeticiones (`python permutation_test.py`, ver
+[`permutation_test.py`](permutation_test.py)) — así la única diferencia entre repeticiones es
+el orden de los datos, no el punto de partida del entrenamiento. Es un barajado **global**, no
+por bloques: destruye toda la estructura temporal, no solo la de corto plazo — una prueba algo
+más exigente que preservar tramos cortos intactos.
+
+| | MAE en test (°C) |
+|---|---|
+| **Datos reales** | **0.88** |
+| Datos barajados — media (N=1000) | 4.56 |
+| Datos barajados — mínimo | 3.53 |
+| Datos barajados — máximo | 5.71 |
+
+Ninguna de las 1000 versiones barajadas se acercó al resultado real: **p < 0.001** (p-valor
+empírico, `(nº de barajados que igualan o superan el MAE real + 1) / (N + 1)`; con 0/1000
+barajados igualando o mejorando el 0.88 real, el resultado no es distinguible de cero con esta
+N). El error bajo en datos reales no es un artefacto — no es autocorrelación falsa por el
+solapamiento de las ventanas ni ruido aprovechado por casualidad — porque las versiones
+barajadas tienen exactamente el mismo solapamiento de ventanas y el mismo ruido, y no logran
+nada parecido. Lo único que les falta es el ciclo día/noche real, que es precisamente lo que la
+red está explotando.
+
+![Test de permutación](results/permutation_test.png)
+
+Datos crudos de las 1000 repeticiones en `results/metrics_permutation_test.json`.
+
 ## Reproducir
 
 ```bash
 pip install -r ../requirements.txt
 python temperatura_dia_noche.py
+python permutation_test.py       # test de permutación, ~15s para las 1000 repeticiones
 ```
 
 ## Limitaciones
@@ -96,3 +135,8 @@ python temperatura_dia_noche.py
 - Con un split de tres partes sobre solo 189 horas totales, validación y test quedan en 38
   horas cada uno — suficiente para ilustrar el mecanismo, pero con más varianza que un
   dataset más grande.
+- El test de permutación baraja la serie de forma global, no por bloques. Preservar tramos
+  cortos intactos (p. ej. bloques de 3-6 horas) y barajar solo su orden sería una prueba más
+  laxa, útil si se quisiera acotar específicamente a "la red no aprovecha solo correlación de
+  muy corto plazo" en vez de la pregunta más amplia que responde aquí ("no aprovecha ninguna
+  estructura temporal").
