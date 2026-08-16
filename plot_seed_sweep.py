@@ -39,7 +39,7 @@ UNIDADES_SIMPLES = [
 
 COLOR_UNICO = "#4C72B0"
 COLORES_VARIANTES = {"baseline": "#4C72B0", "augmented": "#55A868", "augmented_sin_flip": "#C44E52",
-                      "full-batch": "#4C72B0", "mini-batch": "#DD8452"}
+                      "full-batch": "#4C72B0", "mini-batch": "#DD8452", "sgd": "#4C72B0", "adam": "#55A868"}
 
 
 def _formato_valor(v):
@@ -124,6 +124,27 @@ def main():
         datos = json.loads(ruta_json_abs.read_text(encoding="utf-8"))
         valores = datos["unico"]["valores"]
         dotplot_simple(valores, xlabel, titulo, ROOT / ruta_salida)
+        print(f"[ok] {ruta_salida}")
+
+    # Unidades "sgd-vs-adam": 2 variantes de optimizador sobre el mismo problema de su unidad
+    # hermana sin Adam (06-espirales, 07 full-batch, 07 mini-batch)
+    for ruta_json, titulo, ruta_salida in [
+        ("06-zonas-espirales/results_sgd_vs_adam/metrics_seed_sweep.json", "06 — Espirales: SGD vs Adam",
+         "06-zonas-espirales/results_sgd_vs_adam/seed_sweep.png"),
+        ("07-reconocimiento-digitos/results_sgd_vs_adam/metrics_seed_sweep.json",
+         "07 — Dígitos (muestra reducida, full-batch): SGD vs Adam",
+         "07-reconocimiento-digitos/results_sgd_vs_adam/seed_sweep.png"),
+        ("07-reconocimiento-digitos/results_full_sgd_vs_adam/metrics_seed_sweep.json",
+         "07 — Dígitos (dataset completo, mini-batch): SGD vs Adam",
+         "07-reconocimiento-digitos/results_full_sgd_vs_adam/seed_sweep.png"),
+    ]:
+        ruta_json_abs = ROOT / ruta_json
+        if not ruta_json_abs.exists():
+            print(f"[saltado] {ruta_json} no existe todavía")
+            continue
+        datos = json.loads(ruta_json_abs.read_text(encoding="utf-8"))
+        series = [(nombre, datos[nombre]["valores"]) for nombre in ("sgd", "adam") if nombre in datos]
+        dotplot_variantes(series, "Accuracy en test", titulo, ROOT / ruta_salida)
         print(f"[ok] {ruta_salida}")
 
     # 08: 3 variantes por escala, un gráfico combinado por escala

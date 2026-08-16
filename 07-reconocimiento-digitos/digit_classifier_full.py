@@ -67,18 +67,15 @@ def generar_batches(X, Y, batch_size, rng):
         yield X[idx_batch], Y[idx_batch]
 
 
-def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
-    """seed_split y seed_modelo son independientes -- no hay SEED_DATOS porque MNIST es un
-    dataset real y fijo. seed_modelo gobierna tanto la inicialización de pesos como el orden
-    de los mini-batches (ambas son parte de "cómo se entrena", no de "qué datos existen").
-    Ver README para el análisis de robustez sobre múltiples semillas."""
+def cargar_datos(seed_split, quiet=False):
+    """Descarga MNIST y arma el split estratificado 60/20/20 usando TODOS los ejemplos de cada
+    dígito (no un número fijo igual por clase, para no descartar imágenes de las clases con más
+    muestra)."""
     if not quiet:
         print("Descargando MNIST (sklearn fetch_openml)...")
     mnist = fetch_openml("mnist_784", version=1, as_frame=False, parser="liac-arff")
     X_puro, Y_puro = mnist.data, mnist.target.astype(int)
 
-    # Split estratificado 60/20/20 usando TODOS los ejemplos de cada dígito (no un número fijo
-    # igual por clase, para no descartar imágenes de las clases con más muestra).
     rng = np.random.default_rng(seed_split)
     indices_train, indices_val, indices_test = [], [], []
     for digito in range(10):
@@ -108,6 +105,16 @@ def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> d
     Y_train[np.arange(len(X_train)), Y_train_num] = 1
     Y_val = np.zeros((len(X_val), 10))
     Y_val[np.arange(len(X_val)), Y_val_num] = 1
+
+    return X_train, Y_train, Y_train_num, X_val, Y_val, Y_val_num, X_test, Y_test_num
+
+
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split y seed_modelo son independientes -- no hay SEED_DATOS porque MNIST es un
+    dataset real y fijo. seed_modelo gobierna tanto la inicialización de pesos como el orden
+    de los mini-batches (ambas son parte de "cómo se entrena", no de "qué datos existen").
+    Ver README para el análisis de robustez sobre múltiples semillas."""
+    X_train, Y_train, Y_train_num, X_val, Y_val, Y_val_num, X_test, Y_test_num = cargar_datos(seed_split, quiet=quiet)
 
     rng_modelo = np.random.default_rng(seed_modelo)
     red = [

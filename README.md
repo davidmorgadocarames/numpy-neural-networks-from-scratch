@@ -136,6 +136,13 @@ for capa in reversed(red):
 Es, en miniatura, el mismo patrón que usan `Sequential` y `model.fit()` en Keras — aquí escrito
 a mano para verlo por dentro.
 
+Quién actualiza los pesos dentro de ese `backward()` también es intercambiable: `CapaDensa`
+delega en un `optimizador` (`OptimizadorSGD` por defecto -- descenso de gradiente puro, el
+comportamiento de siempre -- u `OptimizadorAdam`, con media móvil del gradiente y de su
+cuadrado por parámetro, implementado desde cero siguiendo [Kingma & Ba,
+2015](https://arxiv.org/abs/1412.6980)). Ver la comparación SGD vs Adam en el README de
+[`06-zonas-espirales`](06-zonas-espirales/) para cuándo importa el cambio y cuándo no.
+
 ## Reproducir cualquier proyecto
 
 ```bash
@@ -251,7 +258,7 @@ frente a la semilla, no una técnica con nombre propio ni una rejilla cruzada: c
 aleatorias no hay ninguna relación de orden entre "semilla 3" y "semilla 4" que una tabla o un
 mapa de calor pudiera mostrar con sentido, así que el resultado se reporta como
 media ± desviación típica (y a veces el rango completo, cuando hay valores atípicos que vale la
-pena señalar). N=20 en las 10 unidades del repositorio (incluido el 08, pese a que cada
+pena señalar). N=20 en las 13 unidades del repositorio (incluido el 08, pese a que cada
 ejecución de su CNN tarda varios minutos y el barrido completo de sus dos variantes ronda las
 7-8 horas de cómputo). [`plot_seed_sweep.py`](plot_seed_sweep.py) genera, a partir de esos datos, un
 dot plot con las N ejecuciones y su media (`seed_sweep.png`); `run_seed_sweep.py` genera además,

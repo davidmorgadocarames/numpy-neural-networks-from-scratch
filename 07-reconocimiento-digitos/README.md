@@ -138,12 +138,62 @@ comparación de la sección 2 (+8.5 puntos a favor del dataset completo) es robu
 incluso en su peor caso (83.33%), la versión reducida sigue muy por debajo del peor caso de la
 versión completa (96.71%) — los rangos ni siquiera se solapan.
 
+## SGD vs Adam
+
+Mismo experimento que en [`06-zonas-espirales`](../06-zonas-espirales/) (ver su README para la
+explicación completa de por qué Adam necesita su propio learning_rate), aquí en las dos escalas
+de este proyecto. `sgd_vs_adam.py` (full-batch) y `sgd_vs_adam_full.py` (mini-batch) no tocan
+`digit_classifier.py`/`digit_classifier_full.py` -- reutilizan su `cargar_datos()` y guardan sus
+propios resultados en `results_sgd_vs_adam/` / `results_full_sgd_vs_adam/`.
+
+**Ejecución canónica** (`seed_split=42, seed_modelo=42`):
+
+| Variante | Optimizador | Accuracy test | Época del mínimo de validación |
+|---|---|---|---|
+| Full-batch | SGD (lr=0.1) | 89.00% | 633 |
+| Full-batch | Adam (lr=0.001) | **90.67%** | **119** |
+| Mini-batch | SGD (lr=0.1) | **97.46%** | 15 |
+| Mini-batch | Adam (lr=0.001) | 97.34% | **9** |
+
+![SGD vs Adam — muestra reducida, full-batch](results_sgd_vs_adam/learning_curve_comparativa.png)
+
+![SGD vs Adam — dataset completo, mini-batch](results_full_sgd_vs_adam/learning_curve_comparativa.png)
+
+**Robustez frente a la semilla (20 semillas por variante)**:
+
+| Variante | Optimizador | Accuracy media ± desv. típica | Rango |
+|---|---|---|---|
+| Full-batch | SGD | 88.23% ± 1.76% | 83.33%–90.67% |
+| Full-batch | Adam | 88.15% ± 1.69% | 84.33%–92.00% |
+| Mini-batch | SGD | 97.46% ± 0.24% | 96.71%–97.80% |
+| Mini-batch | Adam | 97.31% ± 0.12% | 97.07%–97.50% |
+
+![Accuracy: SGD vs Adam — full-batch, 20 semillas](results_sgd_vs_adam/seed_sweep.png)
+
+![Accuracy: SGD vs Adam — mini-batch, 20 semillas](results_full_sgd_vs_adam/seed_sweep.png)
+
+**Lectura honesta, distinta de la de 06**: en la ejecución canónica full-batch Adam parecía
+ganar accuracy (+1.67 puntos) además de converger 5.3 veces más rápido (época 119 frente a
+633) -- pero con 20 semillas esa ventaja de accuracy desaparece (88.15% vs 88.23%, dentro del
+ruido de una semilla a otra): la ganancia de la ejecución canónica era en buena parte suerte de
+esa semilla concreta, no un efecto sistemático. Lo que sí se sostiene en las 20 semillas es la
+velocidad de convergencia, visible en la superposición de curvas
+(`results_sgd_vs_adam/seed_sweep_curvas.png` /
+`results_full_sgd_vs_adam/seed_sweep_curvas.png`): Adam llega a su mínimo de validación en una
+fracción de las épocas que necesita SGD, con una accuracy final estadísticamente indistinguible
+(full-batch) o incluso ligeramente por debajo pero más consistente -- menor desviación típica,
+0.12 frente a 0.24 -- en mini-batch. Con ~1.312 actualizaciones de pesos por época, el mini-batch
+ya converge rápido por sí solo (19 épocas en SGD), así que la ventaja de velocidad de Adam es
+menor en términos relativos que en full-batch (una sola actualización por época).
+
 ## Reproducir
 
 ```bash
 pip install -r ../requirements.txt
 python digit_classifier.py        # versión reducida, full-batch (~1-2 min, descarga MNIST la primera vez)
 python digit_classifier_full.py   # dataset completo, mini-batch (~pocos minutos, ver README)
+python sgd_vs_adam.py             # comparación SGD vs Adam, full-batch
+python sgd_vs_adam_full.py        # comparación SGD vs Adam, mini-batch (~1-2 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 ```
 

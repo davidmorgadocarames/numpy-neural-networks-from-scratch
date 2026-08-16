@@ -41,18 +41,15 @@ PACIENCIA_EARLY_STOP = 200
 MEJORA_MINIMA_RELATIVA = 0.005
 
 
-def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
-    """seed_split y seed_modelo son independientes entre sí -- no hay SEED_DATOS porque MNIST
-    es un dataset real y fijo, no generado sintéticamente: lo único aleatorio es qué imágenes
-    se muestrean (seed_split) y cómo se inicializa la red (seed_modelo). Ver README para el
-    análisis de robustez sobre múltiples semillas."""
+def cargar_datos(seed_split, quiet=False):
+    """Descarga MNIST y arma la muestra estratificada reducida (N_TRAIN/N_VAL/N_TEST por
+    dígito, mismo número para cada uno para que la matriz de confusión no esté sesgada por
+    clases con más ejemplos que otras)."""
     if not quiet:
         print("Descargando MNIST (sklearn fetch_openml)...")
     mnist = fetch_openml("mnist_784", version=1, as_frame=False, parser="liac-arff")
     X_puro, Y_puro = mnist.data, mnist.target.astype(int)
 
-    # Muestra estratificada: mismo número de train/val/test por dígito para que la matriz de
-    # confusión no esté sesgada por clases con más ejemplos que otras.
     rng = np.random.default_rng(seed_split)
     indices_train, indices_val, indices_test = [], [], []
     for digito in range(10):
@@ -82,6 +79,16 @@ def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> d
     Y_train[np.arange(len(X_train)), Y_train_num] = 1
     Y_val = np.zeros((len(X_val), 10))
     Y_val[np.arange(len(X_val)), Y_val_num] = 1
+
+    return X_train, Y_train, Y_train_num, X_val, Y_val, Y_val_num, X_test, Y_test_num
+
+
+def main(seed_split=42, seed_modelo=42, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split y seed_modelo son independientes entre sí -- no hay SEED_DATOS porque MNIST
+    es un dataset real y fijo, no generado sintéticamente: lo único aleatorio es qué imágenes
+    se muestrean (seed_split) y cómo se inicializa la red (seed_modelo). Ver README para el
+    análisis de robustez sobre múltiples semillas."""
+    X_train, Y_train, Y_train_num, X_val, Y_val, Y_val_num, X_test, Y_test_num = cargar_datos(seed_split, quiet=quiet)
 
     rng_modelo = np.random.default_rng(seed_modelo)
     red = [

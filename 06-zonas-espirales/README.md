@@ -109,9 +109,78 @@ resultado estable, coherente con que 3 brazos de espiral con ruido moderado no e
 especialmente difícil para esta arquitectura (ver también la comparación con la red pequeña de
 más abajo).
 
+## SGD vs Adam: ¿cambiaría mucho el pipeline?
+
+Todo el repo entrena con descenso de gradiente puro (`W -= learning_rate * dW`, ver
+`OptimizadorSGD` en [`capas.py`](../capas.py)). Adam ([Kingma & Ba,
+2015](https://arxiv.org/abs/1412.6980)) es el optimizador por defecto en la práctica moderna:
+lleva una media móvil del gradiente (momento, primer orden) y del gradiente al cuadrado
+(segundo orden) por parámetro, para adaptar el tamaño de paso en vez de usar uno fijo para
+toda la red. Se implementó desde cero como `OptimizadorAdam` en `capas.py` (mismo espíritu que
+el resto del repo: sin `tf.keras.optimizers.Adam`, la fórmula escrita a mano) y se comparó
+contra SGD en este proyecto en [`sgd_vs_adam.py`](sgd_vs_adam.py) — **no en
+`spiral_classifier.py`**, que se deja intacto: sus resultados (97.78%, el hallazgo de
+validación de la sección anterior) siguen siendo los del proyecto canónico. La comparación
+reutiliza su misma generación de datos y split (`generar_datos`, `split_estratificado`) pero
+guarda sus propios resultados en `results_sgd_vs_adam/` para no mezclarlos.
+
+**Metodología**: misma arquitectura (2→64→64→3), mismo split, y los **mismos pesos iniciales**
+en las dos variantes (mismo `seed_modelo`) — la única diferencia es el optimizador de cada capa
+y su `learning_rate` propio. Adam necesita uno mucho más pequeño que SGD (aquí 0.01 frente a
+0.2): sus pasos ya vienen normalizados por la varianza del gradiente, así que reutilizar el
+0.2 de SGD haría oscilar el entrenamiento en vez de converger.
+
+**Resultado de la ejecución canónica** (`seed_split=0, seed_modelo=0`):
+
+| Optimizador | Accuracy en test | Época del mínimo de validación | Época de corte (early stopping) |
+|---|---|---|---|
+| SGD (lr=0.2) | 97.78% | 5000 (no llegó a activar el early stopping) | 5000 |
+| Adam (lr=0.01) | 97.78% | **191** | 319 |
+
+Misma accuracy final, pero Adam encuentra su mejor punto de validación **26 veces más rápido**
+(época 191 frente a 5000) — SGD todavía estaba mejorando lentamente cuando se acabaron las 5000
+épocas configuradas, mientras que Adam ya había convergido y empezaba a estabilizarse.
+
+![SGD vs Adam: pérdida de validación por época](results_sgd_vs_adam/learning_curve_comparativa.png)
+
+**Robustez frente a la semilla (20 semillas por variante,**
+`python run_seed_sweep.py --solo 06-sgd-vs-adam --n 20`**)**: el patrón se sostiene en las 20
+repeticiones, no es un golpe de suerte de una sola semilla.
+
+| Optimizador | Accuracy media | Desv. típica | Mínimo | Máximo |
+|---|---|---|---|---|
+| SGD | 98.06% | 1.34% | 95.56% | 100% |
+| Adam | 98.06% | 1.48% | 95.56% | 100% |
+
+![Accuracy: SGD vs Adam sobre 20 semillas](results_sgd_vs_adam/seed_sweep.png)
+
+Las distribuciones de accuracy son prácticamente idénticas (misma media exacta, desviaciones
+típicas comparables) — Adam no saca mejor resultado *final* en este problema. Donde sí se nota,
+en las 20 semillas, es en la velocidad: superponiendo la pérdida de validación de las 20
+repeticiones de cada variante, todas las curvas de Adam (verde) bajan de 10⁻² a 10⁻⁴-10⁻⁵ y se
+estabilizan mucho antes de la época 3000, mientras que ninguna curva de SGD (azul) baja de
+10⁻² dentro de las 5000 épocas configuradas:
+
+![Pérdida de validación por semilla: SGD vs Adam](results_sgd_vs_adam/seed_sweep_curvas.png)
+
+**Conclusión**: para este problema concreto (3 brazos de espiral, red pequeña, ~450 puntos),
+Adam no cambia el resultado final — 3 brazos de espiral con ruido moderado ya convergen bien
+con SGD dado presupuesto suficiente de épocas, como muestra la comparación de arquitecturas de
+la sección anterior. Lo que cambia es el **coste de entrenar**: para llegar al mismo punto,
+Adam necesita un orden de magnitud menos de épocas. En problemas más grandes (más parámetros,
+más datos, mini-batches con gradiente ruidoso — los casos de 07 y 08), esa diferencia de
+velocidad de convergencia suele ser mucho más decisiva que aquí, porque entrenar con SGD hasta
+un punto comparable dejaría de ser barato.
+
+Datos crudos: [`results_sgd_vs_adam/metrics.json`](results_sgd_vs_adam/metrics.json) (ejecución
+canónica, con matrices de confusión y zonas aprendidas por variante en la misma carpeta) y
+[`results_sgd_vs_adam/metrics_seed_sweep.json`](results_sgd_vs_adam/metrics_seed_sweep.json)
+(las 20 repeticiones).
+
 ## Reproducir
 
 ```bash
 pip install -r ../requirements.txt
 python spiral_classifier.py
+python sgd_vs_adam.py          # comparación SGD vs Adam
 ```

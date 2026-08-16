@@ -17,6 +17,8 @@ las capas -- por eso `predecir_cnn()` puede tratarlas todas por igual sin casos 
 
 import numpy as np
 
+from capas import OptimizadorSGD
+
 
 def _normal(rng, shape):
     """randn de np.random o standard_normal de un Generator -- ver capas.py, misma idea:
@@ -64,7 +66,7 @@ class CapaConv2D:
     im2col + multiplicación de matrices. W tiene forma (kh, kw, canales_entrada,
     canales_salida)."""
 
-    def __init__(self, kh, kw, canales_entrada, canales_salida, stride=1, rng=None):
+    def __init__(self, kh, kw, canales_entrada, canales_salida, stride=1, rng=None, optimizador=None):
         self.kh, self.kw, self.stride = kh, kw, stride
         # Inicialización He, igual que CapaDensa en capas.py: evita que las activaciones
         # exploten o se desvanezcan según el número de entradas por neurona (aquí, kh*kw*C_in).
@@ -75,6 +77,9 @@ class CapaConv2D:
         )
         self.b = np.zeros(canales_salida)
         self._cache = None
+        # Mismo optimizador intercambiable que CapaDensa (ver capas.py) -- por defecto SGD
+        # puro, cero cambios de comportamiento si no se pide uno distinto explícitamente.
+        self.optimizador = optimizador if optimizador is not None else OptimizadorSGD()
 
     def forward(self, X, entrenando=True):
         columnas, out_h, out_w = im2col(X, self.kh, self.kw, self.stride)
@@ -96,8 +101,7 @@ class CapaConv2D:
         dcolumnas = dZ_col @ W_col.T
         dX = col2im(dcolumnas, forma_X, self.kh, self.kw, self.stride, out_h, out_w)
 
-        self.W -= learning_rate * dW
-        self.b -= learning_rate * db
+        self.W, self.b = self.optimizador.actualizar(self.W, self.b, dW, db, learning_rate)
         return dX
 
 

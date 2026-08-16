@@ -17,6 +17,54 @@ Cada capa expone dos métodos:
 import numpy as np
 
 
+class OptimizadorSGD:
+    """Descenso de gradiente puro: W -= learning_rate * dW. Es el optimizador por defecto de
+    CapaDensa -- sin estado propio, así que no cambia el comportamiento de ningún proyecto que
+    no pida uno distinto explícitamente."""
+
+    def actualizar(self, W, b, dW, db, learning_rate):
+        return W - learning_rate * dW, b - learning_rate * db
+
+
+class OptimizadorAdam:
+    """Adam (Kingma & Ba, 2015): en vez de dar el mismo paso en la dirección del gradiente
+    (SGD), lleva una media móvil del gradiente (momento de primer orden, m -- suaviza la
+    dirección, como inercia) y una media móvil del gradiente al cuadrado (momento de segundo
+    orden, v -- reduce el paso donde el gradiente es grande/ruidoso, lo amplía donde es
+    pequeño/estable). `m` y `v` se inicializan a cero, lo que sesga sus primeras estimaciones
+    hacia cero -- la corrección de sesgo (dividir por 1 - beta^t) compensa ese arranque en frío.
+
+    Cada instancia lleva el estado (m, v, t) de UNA sola capa -- no se comparte entre capas,
+    cada CapaDensa necesita su propio OptimizadorAdam."""
+
+    def __init__(self, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        self.mW = self.vW = self.mb = self.vb = None
+        self.t = 0
+
+    def actualizar(self, W, b, dW, db, learning_rate):
+        if self.mW is None:
+            self.mW, self.vW = np.zeros_like(W), np.zeros_like(W)
+            self.mb, self.vb = np.zeros_like(b), np.zeros_like(b)
+
+        self.t += 1
+        self.mW = self.beta1 * self.mW + (1 - self.beta1) * dW
+        self.vW = self.beta2 * self.vW + (1 - self.beta2) * dW ** 2
+        self.mb = self.beta1 * self.mb + (1 - self.beta1) * db
+        self.vb = self.beta2 * self.vb + (1 - self.beta2) * db ** 2
+
+        correccion1 = 1 - self.beta1 ** self.t
+        correccion2 = 1 - self.beta2 ** self.t
+        mW_hat, vW_hat = self.mW / correccion1, self.vW / correccion2
+        mb_hat, vb_hat = self.mb / correccion1, self.vb / correccion2
+
+        W_nuevo = W - learning_rate * mW_hat / (np.sqrt(vW_hat) + self.epsilon)
+        b_nuevo = b - learning_rate * mb_hat / (np.sqrt(vb_hat) + self.epsilon)
+        return W_nuevo, b_nuevo
+
+
 def _normal(rng, shape):
     """randn de np.random o standard_normal de un Generator, según cuál se use -- así el
     resto del código no necesita saber si recibió un rng explícito (reproducible con
@@ -31,7 +79,7 @@ def _uniform(rng, low, high, shape):
 class CapaDensa:
     """Capa totalmente conectada: Z = X @ W + b."""
 
-    def __init__(self, dim_entrada, dim_salida, semilla_he=True, rng=None):
+    def __init__(self, dim_entrada, dim_salida, semilla_he=True, rng=None, optimizador=None):
         # Inicialización He (recomendada con LeakyReLU/ReLU): evita que las activaciones
         # exploten o se desvanezcan según crece el número de capas/neuronas.
         # rng=None (por defecto) mantiene el comportamiento de siempre (estado global de
@@ -44,6 +92,9 @@ class CapaDensa:
         self.b = np.zeros((1, dim_salida))
         self.X_entrada = None
         self.Z = None
+        # optimizador=None (por defecto) usa SGD puro -- comportamiento idéntico al de siempre,
+        # así que ningún proyecto existente se ve afectado si no pide uno distinto a propósito.
+        self.optimizador = optimizador if optimizador is not None else OptimizadorSGD()
 
     def forward(self, X, entrenando=True):
         Z = np.dot(X, self.W) + self.b
@@ -57,8 +108,7 @@ class CapaDensa:
         db = np.sum(dZ, axis=0, keepdims=True)
         dX_anterior = np.dot(dZ, self.W.T)
 
-        self.W -= learning_rate * dW
-        self.b -= learning_rate * db
+        self.W, self.b = self.optimizador.actualizar(self.W, self.b, dW, db, learning_rate)
 
         return dX_anterior
 

@@ -1,8 +1,10 @@
 """
-Barrido multi-semilla sobre los 8 proyectos del repo (10 unidades: los 6 proyectos de capas
-densas sin variantes, las 2 variantes de 07-reconocimiento-digitos y las 2 variantes de
+Barrido multi-semilla sobre los 8 proyectos del repo (13 unidades: los 6 proyectos de capas
+densas sin variantes, las 2 variantes de 07-reconocimiento-digitos, las 2 variantes de
 08-cnn-fashion-mnist -- cada llamada a estas últimas ya entrena las 3 sub-variantes de
-augmentation internamente, así que 2 llamadas cubren las 6 combinaciones).
+augmentation internamente, así que 2 llamadas cubren las 6 combinaciones -- y 3 unidades
+"sgd-vs-adam" (06, y las 2 escalas de 07) que entrenan las 2 sub-variantes de optimizador sobre
+el mismo problema de su unidad hermana sin Adam).
 
 Para cada unidad, se ejecuta N veces con seed_split y seed_modelo sorteados de forma
 INDEPENDIENTE en cada ejecución (no atados entre sí, no en rejilla) -- es una estimación Monte
@@ -11,11 +13,12 @@ técnica con nombre propio (ver conversación/README para la discusión de por q
 datos (SEED_DATOS, definida dentro de cada script) se queda siempre fija -- ver README raíz para
 por qué no tendría sentido variarla también.
 
-Escribe results/metrics_seed_sweep.json en la carpeta de cada proyecto (o results_full/ donde
-corresponda), sin tocar los results/metrics.json del run canónico ya documentado.
+Escribe results/metrics_seed_sweep.json en la carpeta de cada proyecto (o results_full/ /
+results_sgd_vs_adam/ donde corresponda), sin tocar los results/metrics.json del run canónico ya
+documentado.
 
 Uso:
-    python run_seed_sweep.py                    # las 10 unidades, N por defecto
+    python run_seed_sweep.py                    # las 13 unidades, N por defecto
     python run_seed_sweep.py --n 5               # N=5 en todas
     python run_seed_sweep.py --solo 08-cnn-fullbatch --n 3
 """
@@ -37,7 +40,7 @@ import numpy as np
 ROOT = Path(__file__).parent
 N_SEEDS_DEFAULT = 20
 COLORES_VARIANTES = {"baseline": "#4C72B0", "augmented": "#55A868", "augmented_sin_flip": "#C44E52",
-                      "unico": "#4C72B0"}
+                      "unico": "#4C72B0", "sgd": "#4C72B0", "adam": "#55A868"}
 
 
 def cargar_modulo(nombre, ruta):
@@ -68,7 +71,10 @@ def metrica_simple(campo):
     return extractor
 
 
-def metrica_08(metrics):
+def metrica_variantes(metrics):
+    """Para unidades con varias variantes entrenadas en la misma llamada a main() (08:
+    baseline/augmented/augmented_sin_flip; 06-sgd-vs-adam: sgd/adam) -- todas comparten el
+    mismo esquema metrics["resultados"][nombre]["accuracy_test"]."""
     return {nombre: datos["accuracy_test"] for nombre, datos in metrics["resultados"].items()}
 
 
@@ -78,7 +84,7 @@ def historial_simple(campo):
     return extractor
 
 
-def historial_08(metrics):
+def historial_variantes(metrics):
     return {nombre: datos["historial_loss_val"] for nombre, datos in metrics["resultados"].items()}
 
 
@@ -97,14 +103,20 @@ UNIDADES = [
      metrica_simple("mae_test_euros"), historial_simple("historial_loss_val")),
     ("06-espirales", "06-zonas-espirales/spiral_classifier.py", "results",
      metrica_simple("accuracy_test"), historial_simple("historial_loss_val")),
+    ("06-sgd-vs-adam", "06-zonas-espirales/sgd_vs_adam.py", "results_sgd_vs_adam",
+     metrica_variantes, historial_variantes),
     ("07-digitos-fullbatch", "07-reconocimiento-digitos/digit_classifier.py", "results",
      metrica_simple("accuracy_test"), historial_simple("historial_loss_val")),
+    ("07-fullbatch-sgd-vs-adam", "07-reconocimiento-digitos/sgd_vs_adam.py", "results_sgd_vs_adam",
+     metrica_variantes, historial_variantes),
     ("07-digitos-minibatch", "07-reconocimiento-digitos/digit_classifier_full.py", "results_full",
      metrica_simple("accuracy_test"), historial_simple("historial_loss_val")),
+    ("07-minibatch-sgd-vs-adam", "07-reconocimiento-digitos/sgd_vs_adam_full.py", "results_full_sgd_vs_adam",
+     metrica_variantes, historial_variantes),
     ("08-cnn-fullbatch", "08-cnn-fashion-mnist/cnn_fashion_mnist.py", "results",
-     metrica_08, historial_08),
+     metrica_variantes, historial_variantes),
     ("08-cnn-minibatch", "08-cnn-fashion-mnist/cnn_fashion_mnist_full.py", "results_full",
-     metrica_08, historial_08),
+     metrica_variantes, historial_variantes),
 ]
 
 

@@ -47,17 +47,15 @@ PACIENCIA_EARLY_STOP = 200
 MEJORA_MINIMA_RELATIVA = 0.005
 
 
-def main(seed_split=0, seed_modelo=0, quiet=False, guardar_graficas=True) -> dict:
-    """seed_split y seed_modelo son independientes entre sí y de SEED_DATOS -- ver README para
-    el análisis de robustez sobre múltiples semillas."""
-    # Datos: SIEMPRE con SEED_DATOS, vía la API legacy de np.random -- así los 450 puntos de la
-    # espiral no cambian nunca, sea cual sea seed_split/seed_modelo.
+def generar_datos():
+    """Generador del dataset de espiral: adaptado del "minimal neural network case study" de
+    CS231n (Stanford), material del curso escrito por Andrej Karpathy --
+    https://cs231n.github.io/neural-networks-case-study/ -- mismo patrón r/theta con ruido
+    gaussiano, renombrado a español y con parámetros como constantes en vez de literales.
+    Datos: SIEMPRE con SEED_DATOS, vía la API legacy de np.random -- así los 450 puntos de la
+    espiral no cambian nunca, sea cual sea seed_split/seed_modelo."""
     np.random.seed(SEED_DATOS)
 
-    # Generador del dataset de espiral: adaptado del "minimal neural network case study" de
-    # CS231n (Stanford), material del curso escrito por Andrej Karpathy --
-    # https://cs231n.github.io/neural-networks-case-study/ -- mismo patrón r/theta con ruido
-    # gaussiano, renombrado a español y con parámetros como constantes en vez de literales.
     X = np.zeros((N_POR_BRAZO * K_CLASES, 2))
     Y_num = np.zeros(N_POR_BRAZO * K_CLASES, dtype="uint8")
     for i in range(K_CLASES):
@@ -68,8 +66,11 @@ def main(seed_split=0, seed_modelo=0, quiet=False, guardar_graficas=True) -> dic
 
     Y = np.zeros((N_POR_BRAZO * K_CLASES, K_CLASES))
     Y[np.arange(N_POR_BRAZO * K_CLASES), Y_num] = 1
+    return X, Y, Y_num
 
-    # Split train/val/test estratificado por brazo (60% train / 20% validación / 20% test)
+
+def split_estratificado(Y_num, seed_split):
+    """Split train/val/test estratificado por brazo (60% train / 20% validación / 20% test)."""
     rng = np.random.default_rng(seed_split)
     indices_train, indices_val, indices_test = [], [], []
     for clase in range(K_CLASES):
@@ -80,9 +81,14 @@ def main(seed_split=0, seed_modelo=0, quiet=False, guardar_graficas=True) -> dic
         indices_train.extend(idx_clase[:corte_train])
         indices_val.extend(idx_clase[corte_train:corte_val])
         indices_test.extend(idx_clase[corte_val:])
-    indices_train = np.array(indices_train)
-    indices_val = np.array(indices_val)
-    indices_test = np.array(indices_test)
+    return np.array(indices_train), np.array(indices_val), np.array(indices_test)
+
+
+def main(seed_split=0, seed_modelo=0, quiet=False, guardar_graficas=True) -> dict:
+    """seed_split y seed_modelo son independientes entre sí y de SEED_DATOS -- ver README para
+    el análisis de robustez sobre múltiples semillas."""
+    X, Y, Y_num = generar_datos()
+    indices_train, indices_val, indices_test = split_estratificado(Y_num, seed_split)
 
     X_train, X_val, X_test = X[indices_train], X[indices_val], X[indices_test]
     Y_train, Y_val, Y_test = Y[indices_train], Y[indices_val], Y[indices_test]
