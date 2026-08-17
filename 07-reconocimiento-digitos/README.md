@@ -273,6 +273,36 @@ que suele aportar en redes bastante más profundas (que es donde se diseñó y d
 hace falta estabilizar la distribución de activaciones capa a capa). No se ha intentado ajustar
 hiperparámetros para forzar un resultado más favorable.
 
+## FGSM: el gradiente que se descartaba, usado a propósito
+
+`CapaDensa.backward()` calcula, en cada capa, el gradiente de la pérdida respecto a **su
+entrada** (`dX_anterior`) -- necesario para propagarlo hacia atrás. En la primera capa de la
+red, ese gradiente es el gradiente respecto a los **píxeles de la imagen**, y hasta ahora se
+descartaba (no hay ninguna capa antes a la que pasárselo). FGSM (Fast Gradient Sign Method,
+[Goodfellow et al.,
+2015](https://arxiv.org/abs/1412.6572)) es exactamente ese gradiente, capturado y usado a
+propósito: en vez de mover los pesos en la dirección que reduce el error (entrenamiento
+normal), mueve los **píxeles** en la dirección que más lo **aumenta** --
+`X_adv = clip(X + ε · signo(dL/dX), 0, 1)`. Sobre la red de referencia (Adam, mini-batch) ya
+entrenada -- [`fgsm.py`](fgsm.py), no toca `sgd_vs_adam_full.py`.
+
+| Epsilon | 0.00 | 0.02 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| Accuracy | 97.34% | 89.37% | 48.20% | 7.30% | 0.63% | 0.01% | 0.00% |
+
+![FGSM: accuracy frente a epsilon](results_fgsm/accuracy_vs_epsilon.png)
+
+Con una perturbación tan pequeña que apenas se aprecia (ε=0.1, sobre píxeles normalizados a
+[0,1]) la accuracy ya se desploma de 97.34% a 7.30% -- peor que adivinar al azar (10% con 10
+clases). La red no ha cambiado, los píxeles apenas se han movido, y sigue siendo el mismo
+dígito a ojos de una persona:
+
+![Ejemplos FGSM](results_fgsm/ejemplos_fgsm.png)
+
+No es un truco académico aislado: es la vulnerabilidad estándar que cualquier modelo de visión
+artificial en producción tiene que tener en cuenta antes de confiar en él para una decisión
+automática.
+
 ## Reproducir
 
 ```bash
@@ -283,6 +313,7 @@ python sgd_vs_adam.py             # comparación SGD vs Adam, full-batch
 python sgd_vs_adam_full.py        # comparación SGD vs Adam, mini-batch (~1-2 min)
 python lr_decay.py                # LR decay vs LR constante (~1 min)
 python batchnorm.py               # BatchNorm vs sin BatchNorm (~1 min)
+python fgsm.py                    # FGSM: accuracy vs epsilon (~1 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py

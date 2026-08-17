@@ -454,6 +454,30 @@ parámetros, 2 capas convolucionales) puede que la normalización interna no hag
 como en arquitecturas mucho más profundas, que es el escenario para el que se diseñó
 originalmente.
 
+## FGSM: el gradiente que se descartaba, usado a propósito
+
+Misma idea que en [`07-reconocimiento-digitos`](../07-reconocimiento-digitos/) (ver su README
+para la explicación completa de FGSM): el `dX_anterior` que la primera capa ya calcula y
+descarta en cada `backward()` es el gradiente de la pérdida respecto a los píxeles de la
+imagen -- FGSM lo usa a propósito para perturbarla en la dirección que más aumenta el error.
+Sobre la red de referencia (Adam, mini-batch, `baseline`) ya entrenada --
+[`fgsm.py`](fgsm.py), no toca `sgd_vs_adam_full.py`.
+
+| Epsilon | 0.00 | 0.02 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| Accuracy | 89.88% | 67.13% | 44.12% | 24.06% | 14.11% | 9.18% | 7.28% |
+
+![FGSM: accuracy frente a epsilon](results_fgsm/accuracy_vs_epsilon.png)
+
+La caída es dramática pero **menos abrupta que en 07** (24.06% en ε=0.1 aquí, frente a 7.30%
+allí) -- una diferencia real, no ruido: la CNN tiene más parámetros y una estructura
+convolucional que comparte filtros entre posiciones de la imagen, lo que la hace algo menos
+frágil ante una perturbación uniforme por píxel que una red densa donde cada píxel de entrada
+tiene su propio peso independiente por neurona. Aun así, con ε=0.15 la red ya falla más de lo
+que acierta:
+
+![Ejemplos FGSM](results_fgsm/ejemplos_fgsm.png)
+
 ## Reproducir
 
 ```bash
@@ -464,6 +488,7 @@ python sgd_vs_adam.py              # SGD vs Adam, full-batch (~32 min: 6 combina
 python sgd_vs_adam_full.py         # SGD vs Adam, mini-batch (~13 min: 6 combinaciones)
 python lr_decay.py                 # LR decay vs LR constante (~4 min)
 python batchnorm.py                # BatchNorm vs sin BatchNorm (~3 min)
+python fgsm.py                     # FGSM: accuracy vs epsilon (~5-6 min)
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
 python ../run_seed_sweep_esquemaB.py --solo 08-fullbatch-sgd-vs-adam --n 20
