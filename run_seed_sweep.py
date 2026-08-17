@@ -40,7 +40,12 @@ import numpy as np
 ROOT = Path(__file__).parent
 N_SEEDS_DEFAULT = 20
 COLORES_VARIANTES = {"baseline": "#4C72B0", "augmented": "#55A868", "augmented_sin_flip": "#C44E52",
-                      "unico": "#4C72B0", "sgd": "#4C72B0", "adam": "#55A868"}
+                      "unico": "#4C72B0", "sgd": "#4C72B0", "adam": "#55A868",
+                      # 08 sgd-vs-adam: 3 variantes de augmentation x 2 optimizadores -- azul
+                      # para sgd, verde para adam, igual que en plot_seed_sweep.py
+                      "baseline_sgd": "#4C72B0", "baseline_adam": "#55A868",
+                      "augmented_sgd": "#4C72B0", "augmented_adam": "#55A868",
+                      "augmented_sin_flip_sgd": "#4C72B0", "augmented_sin_flip_adam": "#55A868"}
 
 
 def cargar_modulo(nombre, ruta):
@@ -115,7 +120,11 @@ UNIDADES = [
      metrica_variantes, historial_variantes),
     ("08-cnn-fullbatch", "08-cnn-fashion-mnist/cnn_fashion_mnist.py", "results",
      metrica_variantes, historial_variantes),
+    ("08-fullbatch-sgd-vs-adam", "08-cnn-fashion-mnist/sgd_vs_adam.py", "results_sgd_vs_adam",
+     metrica_variantes, historial_variantes),
     ("08-cnn-minibatch", "08-cnn-fashion-mnist/cnn_fashion_mnist_full.py", "results_full",
+     metrica_variantes, historial_variantes),
+    ("08-minibatch-sgd-vs-adam", "08-cnn-fashion-mnist/sgd_vs_adam_full.py", "results_full_sgd_vs_adam",
      metrica_variantes, historial_variantes),
 ]
 

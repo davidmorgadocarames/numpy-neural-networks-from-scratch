@@ -39,7 +39,13 @@ UNIDADES_SIMPLES = [
 
 COLOR_UNICO = "#4C72B0"
 COLORES_VARIANTES = {"baseline": "#4C72B0", "augmented": "#55A868", "augmented_sin_flip": "#C44E52",
-                      "full-batch": "#4C72B0", "mini-batch": "#DD8452", "sgd": "#4C72B0", "adam": "#55A868"}
+                      "full-batch": "#4C72B0", "mini-batch": "#DD8452", "sgd": "#4C72B0", "adam": "#55A868",
+                      # 08 sgd-vs-adam: 3 variantes de augmentation x 2 optimizadores -- azul para
+                      # sgd, verde para adam en las 3, para que el color siga distinguiendo
+                      # optimizador igual que en el resto del repo (el nombre ya distingue augmentation)
+                      "baseline_sgd": "#4C72B0", "baseline_adam": "#55A868",
+                      "augmented_sgd": "#4C72B0", "augmented_adam": "#55A868",
+                      "augmented_sin_flip_sgd": "#4C72B0", "augmented_sin_flip_adam": "#55A868"}
 
 
 def _formato_valor(v):
@@ -147,6 +153,24 @@ def main():
         dotplot_variantes(series, "Accuracy en test", titulo, ROOT / ruta_salida)
         print(f"[ok] {ruta_salida}")
 
+    # 08 sgd-vs-adam: 3 variantes de augmentation x 2 optimizadores, un gráfico combinado por escala
+    for ruta_json, escala, ruta_salida in [
+        ("08-cnn-fashion-mnist/results_sgd_vs_adam/metrics_seed_sweep.json", "muestra reducida, full-batch",
+         "08-cnn-fashion-mnist/results_sgd_vs_adam/seed_sweep.png"),
+        ("08-cnn-fashion-mnist/results_full_sgd_vs_adam/metrics_seed_sweep.json", "dataset completo, mini-batch",
+         "08-cnn-fashion-mnist/results_full_sgd_vs_adam/seed_sweep.png"),
+    ]:
+        ruta_json_abs = ROOT / ruta_json
+        if not ruta_json_abs.exists():
+            print(f"[saltado] {ruta_json} no existe todavía")
+            continue
+        datos = json.loads(ruta_json_abs.read_text(encoding="utf-8"))
+        orden = ["baseline_sgd", "baseline_adam", "augmented_sgd", "augmented_adam",
+                 "augmented_sin_flip_sgd", "augmented_sin_flip_adam"]
+        series = [(nombre, datos[nombre]["valores"]) for nombre in orden if nombre in datos]
+        dotplot_variantes(series, "Accuracy en test", f"08 — SGD vs Adam ({escala})", ROOT / ruta_salida)
+        print(f"[ok] {ruta_salida}")
+
     # 08: 3 variantes por escala, un gráfico combinado por escala
     for ruta_json, escala, ruta_salida in [
         ("08-cnn-fashion-mnist/results/metrics_seed_sweep.json", "muestra reducida, full-batch",
@@ -164,6 +188,38 @@ def main():
         dotplot_variantes(series, "Accuracy en test",
                            f"08 — CNN Fashion-MNIST ({escala})",
                            ROOT / ruta_salida)
+        print(f"[ok] {ruta_salida}")
+
+    # Esquema B (split fijo) vs "Actual" (split libre) -- solo 07/08, ver run_seed_sweep_esquemaB.py
+    for carpeta, orden_variantes, titulo in [
+        ("07-reconocimiento-digitos/results_sgd_vs_adam", ["sgd", "adam"],
+         "07 full-batch: split libre vs split fijo"),
+        ("07-reconocimiento-digitos/results_full_sgd_vs_adam", ["sgd", "adam"],
+         "07 mini-batch: split libre vs split fijo"),
+        ("08-cnn-fashion-mnist/results_sgd_vs_adam",
+         ["baseline_sgd", "baseline_adam", "augmented_sgd", "augmented_adam",
+          "augmented_sin_flip_sgd", "augmented_sin_flip_adam"],
+         "08 full-batch: split libre vs split fijo"),
+        ("08-cnn-fashion-mnist/results_full_sgd_vs_adam",
+         ["baseline_sgd", "baseline_adam", "augmented_sgd", "augmented_adam",
+          "augmented_sin_flip_sgd", "augmented_sin_flip_adam"],
+         "08 mini-batch: split libre vs split fijo"),
+    ]:
+        ruta_actual = ROOT / carpeta / "metrics_seed_sweep.json"
+        ruta_esquemaB = ROOT / carpeta / "metrics_seed_sweep_esquemaB.json"
+        if not ruta_actual.exists() or not ruta_esquemaB.exists():
+            print(f"[saltado] {carpeta}: falta metrics_seed_sweep.json y/o metrics_seed_sweep_esquemaB.json")
+            continue
+        datos_actual = json.loads(ruta_actual.read_text(encoding="utf-8"))
+        datos_esquemaB = json.loads(ruta_esquemaB.read_text(encoding="utf-8"))
+        series = []
+        for nombre in orden_variantes:
+            if nombre in datos_actual:
+                series.append((f"{nombre} (split libre)", datos_actual[nombre]["valores"]))
+            if nombre in datos_esquemaB:
+                series.append((f"{nombre} (split fijo)", datos_esquemaB[nombre]["valores"]))
+        ruta_salida = ROOT / carpeta / "seed_sweep_esquemaB.png"
+        dotplot_variantes(series, "Accuracy en test", titulo, ruta_salida)
         print(f"[ok] {ruta_salida}")
 
 

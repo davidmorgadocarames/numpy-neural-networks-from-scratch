@@ -303,12 +303,122 @@ repositorio, pese al coste de cómputo: ~5h y ~2.4h respectivamente).
    afirmaciones sobre varianza en concreto (aunque bastara para la comparación de medias del
    punto 1).
 
+## SGD vs Adam
+
+Mismo experimento que en [`06-zonas-espirales`](../06-zonas-espirales/) y
+[`07-reconocimiento-digitos`](../07-reconocimiento-digitos/) (ver sus README para la
+explicación completa de `OptimizadorAdam`, implementado desde cero en `capas.py`), aquí
+cruzado con las 3 variantes de augmentation y las 2 escalas de este proyecto: 6 combinaciones
+por escala. `sgd_vs_adam.py` (full-batch) y `sgd_vs_adam_full.py` (mini-batch) no tocan
+`cnn_fashion_mnist.py`/`cnn_fashion_mnist_full.py` -- reutilizan su `cargar_datos()`,
+`evaluar()` y `augmentar_lote()`, y guardan sus propios resultados en `results_sgd_vs_adam/` /
+`results_full_sgd_vs_adam/`. `CapaConv2D` (en `capas_cnn.py`) tiene el mismo optimizador
+intercambiable que `CapaDensa` -- por defecto SGD, cero cambios de comportamiento en
+`cnn_fashion_mnist.py`/`_full.py` si no se pide uno distinto.
+
+**Robustez frente a la semilla (20 semillas por combinación,**
+`python run_seed_sweep.py --solo 08-fullbatch-sgd-vs-adam --n 20` /
+`--solo 08-minibatch-sgd-vs-adam --n 20`**)**:
+
+**Muestra reducida, full-batch:**
+
+| Variante | SGD | Adam (lr=0.001) | Diferencia |
+|---|---|---|---|
+| baseline | 80.58% ± 1.22% | **83.70% ± 1.42%** | +3.12 pts |
+| augmented | 76.52% ± 1.45% | **81.19% ± 1.54%** | +4.67 pts |
+| augmented_sin_flip | 77.04% ± 1.53% | **81.97% ± 1.11%** | +4.93 pts |
+
+![SGD vs Adam — full-batch, 20 semillas](results_sgd_vs_adam/seed_sweep.png)
+
+![Pérdida de validación por semilla — full-batch](results_sgd_vs_adam/seed_sweep_curvas.png)
+
+**Dataset completo, mini-batch:**
+
+| Variante | SGD | Adam (lr=0.001) | Diferencia |
+|---|---|---|---|
+| baseline | 88.39% ± 0.58% | **89.58% ± 0.43%** | +1.19 pts |
+| augmented | 85.08% ± 0.98% | **87.67% ± 0.53%** | +2.59 pts |
+| augmented_sin_flip | 85.69% ± 0.84% | **88.03% ± 0.46%** | +2.34 pts |
+
+![SGD vs Adam — mini-batch, 20 semillas](results_full_sgd_vs_adam/seed_sweep.png)
+
+![Pérdida de validación por semilla — mini-batch](results_full_sgd_vs_adam/seed_sweep_curvas.png)
+
+**Lectura honesta, distinta de la de 06 y 07**: aquí Adam no solo converge razonablemente
+rápido, sino que además **gana en accuracy de forma consistente en las 6 combinaciones**, y con
+menos varianza entre semillas (desviación típica típicamente un 30-50% menor que SGD). A
+diferencia de 07-full-batch, donde la ventaja de accuracy de la ejecución canónica desaparecía
+con 20 semillas, aquí se sostiene con claridad en las 6 comparaciones -- las distribuciones de
+SGD y Adam prácticamente no se solapan en el dot-plot. La convergencia en épocas es más rápida
+en full-batch (donde SGD parte de un learning_rate mucho más alto y sin adaptación) que en
+mini-batch (donde SGD ya se beneficia de ~1.313 actualizaciones de pesos por época, así que
+tiene menos margen de mejora en velocidad, aunque Adam lo siga superando en accuracy final).
+
+Datos crudos en `results_sgd_vs_adam/metrics_seed_sweep.json` y
+`results_full_sgd_vs_adam/metrics_seed_sweep.json`.
+
+## Esquema B: split fijo vs split libre
+
+Misma pregunta que en [`07-reconocimiento-digitos`](../07-reconocimiento-digitos/) (ver su
+README para la explicación completa): `seed_split` fijo en 42 siempre, frente al split libre e
+independiente de "Robustez frente a la semilla". Se ejecuta con
+[`run_seed_sweep_esquemaB.py`](../run_seed_sweep_esquemaB.py), reutilizando
+`sgd_vs_adam.py`/`sgd_vs_adam_full.py` sin tocarlos -- solo cambian las semillas.
+
+**Muestra reducida, full-batch:**
+
+| Variante | Split libre | Split fijo | Diferencia |
+|---|---|---|---|
+| baseline, SGD | 80.58% ± 1.22% | 79.39% ± 0.95% | -1.19 pts |
+| baseline, Adam | 83.70% ± 1.42% | 81.85% ± 0.59% | -1.85 pts |
+| augmented, SGD | 76.52% ± 1.45% | 74.63% ± 0.71% | -1.89 pts |
+| augmented, Adam | 81.19% ± 1.54% | 78.74% ± 0.93% | -2.45 pts |
+| augmented_sin_flip, SGD | 77.04% ± 1.53% | 75.83% ± 0.70% | -1.21 pts |
+| augmented_sin_flip, Adam | 81.97% ± 1.11% | 79.59% ± 0.97% | -2.38 pts |
+
+![Split libre vs fijo — full-batch](results_sgd_vs_adam/seed_sweep_esquemaB.png)
+
+**Dataset completo, mini-batch:**
+
+| Variante | Split libre | Split fijo | Diferencia |
+|---|---|---|---|
+| baseline, SGD | 88.39% ± 0.58% | 88.05% ± 0.48% | -0.34 pts |
+| baseline, Adam | 89.58% ± 0.43% | 89.38% ± 0.36% | -0.20 pts |
+| augmented, SGD | 85.08% ± 0.98% | 85.07% ± 0.71% | -0.01 pts |
+| augmented, Adam | 87.67% ± 0.53% | 87.03% ± 0.65% | -0.64 pts |
+| augmented_sin_flip, SGD | 85.69% ± 0.84% | 85.09% ± 0.81% | -0.60 pts |
+| augmented_sin_flip, Adam | 88.03% ± 0.46% | 87.64% ± 0.60% | -0.39 pts |
+
+![Split libre vs fijo — mini-batch](results_full_sgd_vs_adam/seed_sweep_esquemaB.png)
+
+**Lectura, consistente con 07**: fijar el split reduce la desviación típica en las 12
+combinaciones (aísla la varianza de inicialización, elimina la del split). Pero en full-batch
+(2.400 imágenes) la media **baja** de forma consistente entre 1.2 y 2.5 puntos con split fijo
+-- la partición `seed_split=42` resulta ser algo más difícil que la media de particiones
+aleatorias sobre esta muestra reducida (al revés que en 07, donde esa misma partición 42 daba
+una muestra algo más fácil: no hay ninguna razón para que una partición fija concreta sea
+sistemáticamente mejor o peor entre proyectos distintos, cada uno con su propio dataset). En
+mini-batch (42.000 imágenes) el efecto es mucho menor (-0.01 a -0.64 puntos) -- con más muestra,
+importa menos qué partición concreta te toque, el mismo patrón que ya se veía en "Robustez
+frente a la semilla". La conclusión práctica: split fijo no es una mejora gratis sobre split
+libre -- gana en varianza, pero el punto medio que reporta depende de si la partición fija
+elegida resultó representativa, y esto pesa más cuanto menos dato hay.
+
+Datos crudos en `results_sgd_vs_adam/metrics_seed_sweep_esquemaB.json` y
+`results_full_sgd_vs_adam/metrics_seed_sweep_esquemaB.json`.
+
 ## Reproducir
 
 ```bash
 pip install -r ../requirements.txt
 python cnn_fashion_mnist.py        # muestra reducida, full-batch (~13,5 min: 3 versiones)
 python cnn_fashion_mnist_full.py   # dataset completo, mini-batch (~8,3 min: 3 versiones)
+python sgd_vs_adam.py              # SGD vs Adam, full-batch (~32 min: 6 combinaciones)
+python sgd_vs_adam_full.py         # SGD vs Adam, mini-batch (~13 min: 6 combinaciones)
+
+# Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
+python ../run_seed_sweep_esquemaB.py --solo 08-fullbatch-sgd-vs-adam --n 20
+python ../run_seed_sweep_esquemaB.py --solo 08-minibatch-sgd-vs-adam --n 20
 ```
 
 ## Limitaciones

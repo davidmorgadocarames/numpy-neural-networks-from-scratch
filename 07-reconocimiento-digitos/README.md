@@ -186,6 +186,42 @@ fracción de las épocas que necesita SGD, con una accuracy final estadísticame
 ya converge rápido por sí solo (19 épocas en SGD), así que la ventaja de velocidad de Adam es
 menor en términos relativos que en full-batch (una sola actualización por época).
 
+## Esquema B: split fijo vs split libre
+
+Pregunta distinta a la de "Robustez frente a la semilla": ahí `seed_split` y `seed_modelo`
+varían los dos, cada uno de forma independiente ("split libre"). Aquí `seed_split` se deja
+**fijo en 42 siempre** y solo `seed_modelo` varía en las 20 repeticiones ("split fijo") --
+aísla cuánto de la varianza observada viene solo de reinicializar los pesos, con exactamente
+la misma partición train/val/test todas las veces. No hay `SEED_DATOS` en este proyecto (MNIST
+es un dataset real, no generado), así que fijar el split es el equivalente más cercano a "fijar
+los datos" que existe aquí. Se ejecuta con
+[`run_seed_sweep_esquemaB.py`](../run_seed_sweep_esquemaB.py) (ver su docstring para el porqué
+completo), reutilizando el mismo `sgd_vs_adam.py`/`sgd_vs_adam_full.py` -- solo cambian las
+semillas con las que se le llama.
+
+| Variante | Split libre (media ± std) | Split fijo (media ± std) |
+|---|---|---|
+| Full-batch, SGD | 88.23% ± 1.76% | 89.55% ± 0.47% |
+| Full-batch, Adam | 88.15% ± 1.69% | 90.23% ± 0.61% |
+| Mini-batch, SGD | 97.46% ± 0.24% | 97.43% ± 0.11% |
+| Mini-batch, Adam | 97.31% ± 0.12% | 97.28% ± 0.11% |
+
+![Split libre vs fijo — full-batch](results_sgd_vs_adam/seed_sweep_esquemaB.png)
+
+![Split libre vs fijo — mini-batch](results_full_sgd_vs_adam/seed_sweep_esquemaB.png)
+
+**Lectura**: en las dos variantes, fijar el split reduce la desviación típica de forma clara
+(en full-batch, a una cuarta parte aprox.) -- tiene sentido, se elimina una fuente entera de
+varianza. Pero en full-batch la media también **sube** casi 2 puntos respecto al split libre
+(88-88% → 89-90%): la partición `seed_split=42` en concreto resulta ser algo más fácil que la
+media de particiones aleatorias sobre solo 1.200 imágenes -- con tan poca muestra, qué imágenes
+concretas caen en test todavía pesa. En mini-batch (42.000 imágenes) la media prácticamente no
+se mueve (97.46→97.43, 97.31→97.28): con mucha más muestra, una partición concreta ya no es
+distinguible de otra. Es el mismo patrón que "Robustez frente a la semilla" ya mostraba (más
+varianza en la muestra reducida que en el dataset completo), visto ahora desde el ángulo
+contrario: split fijo no es gratis -- cambia la desviación típica, pero también puede sesgar la
+media si la partición fija elegida no es representativa, sobre todo con poca muestra.
+
 ## Reproducir
 
 ```bash
@@ -195,6 +231,10 @@ python digit_classifier_full.py   # dataset completo, mini-batch (~pocos minutos
 python sgd_vs_adam.py             # comparación SGD vs Adam, full-batch
 python sgd_vs_adam_full.py        # comparación SGD vs Adam, mini-batch (~1-2 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
+
+# Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
+python ../run_seed_sweep_esquemaB.py --solo 07-fullbatch-sgd-vs-adam --n 20
+python ../run_seed_sweep_esquemaB.py --solo 07-minibatch-sgd-vs-adam --n 20
 ```
 
 ## Limitaciones
