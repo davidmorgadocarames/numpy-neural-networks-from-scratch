@@ -330,7 +330,6 @@ intercambiable que `CapaDensa` -- por defecto SGD, cero cambios de comportamient
 
 ![SGD vs Adam — full-batch, 20 semillas](results_sgd_vs_adam/seed_sweep.png)
 
-![Pérdida de validación por semilla — full-batch](results_sgd_vs_adam/seed_sweep_curvas.png)
 
 **Dataset completo, mini-batch:**
 
@@ -342,7 +341,6 @@ intercambiable que `CapaDensa` -- por defecto SGD, cero cambios de comportamient
 
 ![SGD vs Adam — mini-batch, 20 semillas](results_full_sgd_vs_adam/seed_sweep.png)
 
-![Pérdida de validación por semilla — mini-batch](results_full_sgd_vs_adam/seed_sweep_curvas.png)
 
 **Lectura honesta, distinta de la de 06 y 07**: aquí Adam no solo converge razonablemente
 rápido, sino que además **gana en accuracy de forma consistente en las 6 combinaciones**, y con
