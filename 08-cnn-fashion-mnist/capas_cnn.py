@@ -105,6 +105,58 @@ class CapaConv2D:
         return dX
 
 
+class CapaBatchNorm2D:
+    """Misma idea y misma derivación de backward que `CapaBatchNorm` en `../capas.py`, pero
+    promediando sobre (N, H, W) en vez de solo sobre N: en una CNN hay una única estadística
+    por CANAL, no por posición del mapa de activaciones -- todos los píxeles de un mismo canal
+    comparten el mismo filtro que los generó, así que tiene sentido normalizarlos juntos.
+    `gamma`/`beta` tienen forma (1, 1, 1, canales) en vez de (1, dim) por el mismo motivo."""
+
+    EJES = (0, 1, 2)  # N, H, W -- todo menos el canal
+
+    def __init__(self, canales, momentum=0.9, epsilon=1e-5, optimizador=None):
+        self.gamma = np.ones((1, 1, 1, canales))
+        self.beta = np.zeros((1, 1, 1, canales))
+        self.momentum = momentum
+        self.epsilon = epsilon
+        self.running_mean = np.zeros((1, 1, 1, canales))
+        self.running_var = np.ones((1, 1, 1, canales))
+        self.optimizador = optimizador if optimizador is not None else OptimizadorSGD()
+        self._cache = None
+
+    def forward(self, X, entrenando=True):
+        if entrenando:
+            mu = X.mean(axis=self.EJES, keepdims=True)
+            var = X.var(axis=self.EJES, keepdims=True)
+            std_inv = 1.0 / np.sqrt(var + self.epsilon)
+            X_norm = (X - mu) * std_inv
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * mu
+            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * var
+            self._cache = (X, X_norm, mu, std_inv)
+        else:
+            X_norm = (X - self.running_mean) / np.sqrt(self.running_var + self.epsilon)
+        return self.gamma * X_norm + self.beta
+
+    def backward(self, dZ, learning_rate):
+        X, X_norm, mu, std_inv = self._cache
+        # Número de elementos promediados por canal (N*H*W), no solo N como en CapaBatchNorm.
+        n = X.shape[0] * X.shape[1] * X.shape[2]
+
+        dgamma = np.sum(dZ * X_norm, axis=self.EJES, keepdims=True)
+        dbeta = np.sum(dZ, axis=self.EJES, keepdims=True)
+
+        dX_norm = dZ * self.gamma
+        X_mu = X - mu
+        dvar = np.sum(dX_norm * X_mu, axis=self.EJES, keepdims=True) * -0.5 * std_inv ** 3
+        dmu = (np.sum(dX_norm * -std_inv, axis=self.EJES, keepdims=True)
+               + dvar * np.mean(-2 * X_mu, axis=self.EJES, keepdims=True))
+        dX_anterior = dX_norm * std_inv + dvar * 2 * X_mu / n + dmu / n
+
+        self.gamma, self.beta = self.optimizador.actualizar(self.gamma, self.beta, dgamma, dbeta, learning_rate)
+
+        return dX_anterior
+
+
 class CapaMaxPool2D:
     """Max pooling: reduce cada ventana size x size a su valor máximo. Implementado con la
     técnica de "reshape + max" (vectorizada, sin bucles por píxel): si las dimensiones no son

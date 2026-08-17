@@ -143,6 +143,15 @@ cuadrado por parámetro, implementado desde cero siguiendo [Kingma & Ba,
 2015](https://arxiv.org/abs/1412.6980)). Ver la comparación SGD vs Adam en el README de
 [`06-zonas-espirales`](06-zonas-espirales/) para cuándo importa el cambio y cuándo no.
 
+`CapaBatchNorm` (dense) y `CapaBatchNorm2D` (convolucional, en
+[`08-cnn-fashion-mnist/capas_cnn.py`](08-cnn-fashion-mnist/capas_cnn.py)) normalizan la salida
+de una capa a media 0 / varianza 1 sobre el batch actual, y aplican una escala/desplazamiento
+aprendidos -- misma interfaz `forward`/`backward` que el resto, verificadas por diferencias
+finitas. Ver las secciones "BatchNorm" de [`07-reconocimiento-digitos`](07-reconocimiento-digitos/)
+y [`08-cnn-fashion-mnist`](08-cnn-fashion-mnist/) para un hallazgo consistente entre las dos
+redes: converge más rápido y a menor pérdida de validación, pero no siempre mejora la accuracy
+final -- loss y accuracy no siempre se mueven juntos.
+
 ## Reproducir cualquier proyecto
 
 ```bash

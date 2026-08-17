@@ -222,6 +222,57 @@ varianza en la muestra reducida que en el dataset completo), visto ahora desde e
 contrario: split fijo no es gratis -- cambia la desviación típica, pero también puede sesgar la
 media si la partición fija elegida no es representativa, sobre todo con poca muestra.
 
+## Learning rate decay
+
+Sobre la configuración de referencia (Adam, mini-batch, split libre -- ver README raíz para
+por qué esta es la base para todo lo nuevo del repo, en vez de repetir la comparación
+SGD-vs-Adam otra vez): `lr(época) = 0.001 · 0.9^época`, decaimiento exponencial, frente al
+mismo Adam con `learning_rate` constante. Reutiliza `crear_red()` de `sgd_vs_adam_full.py` sin
+tocarlo -- [`lr_decay.py`](lr_decay.py).
+
+| Variante | Accuracy test | Época del mínimo | Loss val. mínimo |
+|---|---|---|---|
+| Adam, lr constante | 97.34% | 9 | 0.0870 |
+| Adam, lr con decay | **97.49%** | 11 | **0.0824** |
+
+![LR decay vs LR constante](results_lr_decay/lr_decay_comparativa.png)
+
+Mejora pequeña pero real (+0.15 puntos, loss de validación algo mejor) a cambio de 2 épocas
+más -- con el learning_rate constante, la pérdida de validación empieza a oscilar hacia el
+final (curva azul, últimas 3 épocas); con decay se amortigua esa oscilación porque el paso se
+hace más pequeño justo cuando el entrenamiento ya está cerca del mínimo. Datos crudos,
+incluida la curva de `learning_rate` real usada en cada época, en
+[`results_lr_decay/metrics.json`](results_lr_decay/metrics.json).
+
+## BatchNorm
+
+`CapaBatchNorm` (nueva, en [`../capas.py`](../capas.py)) normaliza cada característica a media
+0 / varianza 1 sobre el batch actual y aplica una escala/desplazamiento aprendidos (gamma,
+beta) -- verificada por diferencias finitas en
+[`../tests/test_gradients.py`](../tests/test_gradients.py), igual que el resto de capas.
+Insertada entre la capa oculta y su activación (Dense → BatchNorm → LeakyReLU), sobre la
+configuración de referencia -- [`batchnorm.py`](batchnorm.py), no toca
+`sgd_vs_adam_full.py`.
+
+| Variante | Accuracy test | Época del mínimo | Loss val. mínimo |
+|---|---|---|---|
+| Adam, sin BatchNorm | **97.34%** | 9 | 0.0870 |
+| Adam, con BatchNorm | 96.65% | 10 | **0.0806** |
+
+![BatchNorm vs sin BatchNorm](results_batchnorm/batchnorm_comparativa.png)
+
+**Resultado que merece explicarse, no maquillarse**: con BatchNorm la pérdida de validación
+mínima es mejor (0.0806 frente a 0.0870), pero la accuracy en test es peor (96.65% frente a
+97.34%) -- loss y accuracy no siempre se mueven juntos. Son dos formas distintas de medir el
+error: la pérdida (entropía cruzada) penaliza por lo segura que está la red incluso cuando
+acierta la clase, mientras que accuracy solo mira si la clase más probable es la correcta. Es
+posible que BatchNorm produzca predicciones con probabilidades mejor calibradas en conjunto
+(loss más bajo) sin que eso cambie a favor cuántas veces exactamente acierta la clase top-1 en
+esta red concreta -- 128 neuronas en la capa oculta es poco margen para que BatchNorm aporte lo
+que suele aportar en redes bastante más profundas (que es donde se diseñó y donde de verdad
+hace falta estabilizar la distribución de activaciones capa a capa). No se ha intentado ajustar
+hiperparámetros para forzar un resultado más favorable.
+
 ## Reproducir
 
 ```bash
@@ -230,6 +281,8 @@ python digit_classifier.py        # versión reducida, full-batch (~1-2 min, des
 python digit_classifier_full.py   # dataset completo, mini-batch (~pocos minutos, ver README)
 python sgd_vs_adam.py             # comparación SGD vs Adam, full-batch
 python sgd_vs_adam_full.py        # comparación SGD vs Adam, mini-batch (~1-2 min)
+python lr_decay.py                # LR decay vs LR constante (~1 min)
+python batchnorm.py               # BatchNorm vs sin BatchNorm (~1 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py

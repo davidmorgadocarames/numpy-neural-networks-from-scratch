@@ -113,6 +113,65 @@ class CapaDensa:
         return dX_anterior
 
 
+class CapaBatchNorm:
+    """Normaliza cada característica a media 0 / varianza 1 sobre el batch actual, y aplica
+    una escala y un desplazamiento aprendidos (gamma, beta) -- así la red conserva la libertad
+    de deshacer la normalización si le conviene, en vez de forzar siempre media 0 en cada capa.
+
+    En evaluación (entrenando=False) usa la media/varianza acumuladas durante el entrenamiento
+    (`running_mean`/`running_var`, medias móviles con momento) en vez de las del batch actual:
+    en test no siempre hay un batch grande -- puede ser una sola muestra -- del que sacar
+    estadísticas fiables, así que se reutilizan las que ya se vieron entrenando.
+
+    `gamma`/`beta` se actualizan con el mismo `optimizador` intercambiable que `CapaDensa`
+    (SGD por defecto, Adam si se pasa uno) -- son parámetros aprendidos como cualquier otro.
+
+    Derivación del backward: la forma vectorizada estándar (ver "Batch Normalization backward
+    pass" de CS231n, Stanford), no la versión ingenua paso a paso por el grafo -- son
+    algebraicamente equivalentes, pero esta evita varios tensores intermedios."""
+
+    def __init__(self, dim, momentum=0.9, epsilon=1e-5, optimizador=None):
+        self.gamma = np.ones((1, dim))
+        self.beta = np.zeros((1, dim))
+        self.momentum = momentum
+        self.epsilon = epsilon
+        self.running_mean = np.zeros((1, dim))
+        self.running_var = np.ones((1, dim))
+        self.optimizador = optimizador if optimizador is not None else OptimizadorSGD()
+        self._cache = None
+
+    def forward(self, X, entrenando=True):
+        if entrenando:
+            mu = X.mean(axis=0, keepdims=True)
+            var = X.var(axis=0, keepdims=True)
+            std_inv = 1.0 / np.sqrt(var + self.epsilon)
+            X_norm = (X - mu) * std_inv
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * mu
+            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * var
+            self._cache = (X, X_norm, mu, std_inv)
+        else:
+            X_norm = (X - self.running_mean) / np.sqrt(self.running_var + self.epsilon)
+        return self.gamma * X_norm + self.beta
+
+    def backward(self, dZ, learning_rate):
+        X, X_norm, mu, std_inv = self._cache
+        N = X.shape[0]
+
+        dgamma = np.sum(dZ * X_norm, axis=0, keepdims=True)
+        dbeta = np.sum(dZ, axis=0, keepdims=True)
+
+        dX_norm = dZ * self.gamma
+        X_mu = X - mu
+        dvar = np.sum(dX_norm * X_mu, axis=0, keepdims=True) * -0.5 * std_inv ** 3
+        dmu = (np.sum(dX_norm * -std_inv, axis=0, keepdims=True)
+               + dvar * np.mean(-2 * X_mu, axis=0, keepdims=True))
+        dX_anterior = dX_norm * std_inv + dvar * 2 * X_mu / N + dmu / N
+
+        self.gamma, self.beta = self.optimizador.actualizar(self.gamma, self.beta, dgamma, dbeta, learning_rate)
+
+        return dX_anterior
+
+
 class ActivacionLeakyReLU:
     def __init__(self):
         self.Z = None

@@ -405,6 +405,55 @@ elegida resultó representativa, y esto pesa más cuanto menos dato hay.
 Datos crudos en `results_sgd_vs_adam/metrics_seed_sweep_esquemaB.json` y
 `results_full_sgd_vs_adam/metrics_seed_sweep_esquemaB.json`.
 
+## Learning rate decay
+
+Sobre la configuración de referencia (Adam, mini-batch, variante `baseline` -- ver README raíz
+para por qué esta es la base para todo lo nuevo del repo, sin repetir la comparación de
+augmentation ya documentada arriba): `lr(época) = 0.001 · 0.9^época` frente al mismo Adam con
+`learning_rate` constante. Reutiliza `crear_red()` de `sgd_vs_adam_full.py` --
+[`lr_decay.py`](lr_decay.py).
+
+| Variante | Accuracy test | Época del mínimo | Loss val. mínimo |
+|---|---|---|---|
+| Adam, lr constante | **89.88%** | 17 | 0.2712 |
+| Adam, lr con decay | 89.79% | 17 | **0.2688** |
+
+![LR decay vs LR constante](results_lr_decay/lr_decay_comparativa.png)
+
+A diferencia de 07, aquí la diferencia es prácticamente ruido (-0.09 puntos de accuracy, loss
+de validación ligeramente mejor con decay) -- resultado honesto, no todo lo que se prueba tiene
+que mejorar las cosas de forma vistosa. Sí se nota un efecto más sutil en la curva: la versión
+con decay oscila algo menos en las últimas épocas, consistente con pasos más pequeños cerca del
+mínimo, aunque aquí no se traduzca en una accuracy final mejor.
+
+## BatchNorm
+
+`CapaBatchNorm2D` (nueva, en [`capas_cnn.py`](capas_cnn.py)) es la misma idea que
+`CapaBatchNorm` de [`../capas.py`](../capas.py) pero normalizando por canal sobre (N, H, W) en
+vez de solo sobre N -- todos los píxeles de un mismo canal comparten el filtro que los generó,
+así que tiene sentido normalizarlos juntos. Verificada por diferencias finitas en
+[`../tests/test_gradients.py`](../tests/test_gradients.py). Insertada tras cada `CapaConv2D` y
+tras la primera `CapaDensa` (Conv/Dense → BatchNorm → LeakyReLU), sobre la variante `baseline`
+de la configuración de referencia -- [`batchnorm.py`](batchnorm.py), no toca
+`sgd_vs_adam_full.py`.
+
+| Variante | Accuracy test | Época del mínimo | Loss val. mínimo |
+|---|---|---|---|
+| Adam, sin BatchNorm | **89.88%** | 17 | 0.2712 |
+| Adam, con BatchNorm | 88.76% | 11 | **0.2616** |
+
+![BatchNorm vs sin BatchNorm](results_batchnorm/batchnorm_comparativa.png)
+
+**Mismo patrón que en 07, más marcado aquí**: BatchNorm converge más rápido (mínimo en la
+época 11, frente a la 17 sin él -- la curva verde queda claramente por debajo de la azul casi
+todo el entrenamiento) y a una pérdida de validación mejor, pero la accuracy en test es peor
+(88.76% frente a 89.88%). Confirma con una segunda red distinta que loss y accuracy no siempre
+se mueven juntos, y que aquí BatchNorm gana en velocidad de convergencia sin ganar en la
+métrica final que de verdad importa para clasificación. Con una red de este tamaño (~27.500
+parámetros, 2 capas convolucionales) puede que la normalización interna no haga tanta falta
+como en arquitecturas mucho más profundas, que es el escenario para el que se diseñó
+originalmente.
+
 ## Reproducir
 
 ```bash
@@ -413,6 +462,8 @@ python cnn_fashion_mnist.py        # muestra reducida, full-batch (~13,5 min: 3 
 python cnn_fashion_mnist_full.py   # dataset completo, mini-batch (~8,3 min: 3 versiones)
 python sgd_vs_adam.py              # SGD vs Adam, full-batch (~32 min: 6 combinaciones)
 python sgd_vs_adam_full.py         # SGD vs Adam, mini-batch (~13 min: 6 combinaciones)
+python lr_decay.py                 # LR decay vs LR constante (~4 min)
+python batchnorm.py                # BatchNorm vs sin BatchNorm (~3 min)
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
 python ../run_seed_sweep_esquemaB.py --solo 08-fullbatch-sgd-vs-adam --n 20

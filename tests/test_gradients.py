@@ -11,38 +11,44 @@ README del proyecto 08 por algo que cualquiera puede ejecutar y comprobar por s�
 
 import numpy as np
 
-from capas import ActivacionLeakyReLU, ActivacionSigmoide, CapaDensa
-from capas_cnn import CapaConv2D, CapaMaxPool2D
+from capas import ActivacionLeakyReLU, ActivacionSigmoide, CapaBatchNorm, CapaDensa
+from capas_cnn import CapaBatchNorm2D, CapaConv2D, CapaMaxPool2D
 
 EPS = 1e-5
 ATOL = 1e-4
 
 
-def gradiente_numerico_entrada(capa, X, dZ_fija, eps=EPS):
+def gradiente_numerico_entrada(capa, X, dZ_fija, eps=EPS, entrenando=False):
     """dL/dX por diferencias finitas centradas, con L(X) = sum(forward(X) * dZ_fija) --
-    dZ_fija hace de "gradiente que llega desde la capa siguiente" en un backward real."""
+    dZ_fija hace de "gradiente que llega desde la capa siguiente" en un backward real.
+    entrenando=False por defecto (no toca ningún estado cacheado mientras se sondea); las
+    capas de BatchNorm necesitan entrenando=True porque su forward calcula una función
+    distinta según el modo (estadísticas del batch actual vs. medias acumuladas) -- el
+    backward deriva la de entrenamiento, así que el sondeo numérico tiene que medir esa
+    misma función para que ambos se puedan comparar."""
     grad = np.zeros_like(X, dtype=float)
     for idx in np.ndindex(X.shape):
         original = X[idx]
         X[idx] = original + eps
-        mas = np.sum(capa.forward(X, entrenando=False) * dZ_fija)
+        mas = np.sum(capa.forward(X, entrenando=entrenando) * dZ_fija)
         X[idx] = original - eps
-        menos = np.sum(capa.forward(X, entrenando=False) * dZ_fija)
+        menos = np.sum(capa.forward(X, entrenando=entrenando) * dZ_fija)
         X[idx] = original
         grad[idx] = (mas - menos) / (2 * eps)
     return grad
 
 
-def gradiente_numerico_parametro(capa, nombre_atributo, X, dZ_fija, eps=EPS):
-    """Igual que arriba pero perturbando un parámetro de la capa (W o b) en vez de X."""
+def gradiente_numerico_parametro(capa, nombre_atributo, X, dZ_fija, eps=EPS, entrenando=False):
+    """Igual que arriba pero perturbando un parámetro de la capa (W o b, o gamma/beta en
+    BatchNorm) en vez de X."""
     parametro = getattr(capa, nombre_atributo)
     grad = np.zeros_like(parametro, dtype=float)
     for idx in np.ndindex(parametro.shape):
         original = parametro[idx]
         parametro[idx] = original + eps
-        mas = np.sum(capa.forward(X, entrenando=False) * dZ_fija)
+        mas = np.sum(capa.forward(X, entrenando=entrenando) * dZ_fija)
         parametro[idx] = original - eps
-        menos = np.sum(capa.forward(X, entrenando=False) * dZ_fija)
+        menos = np.sum(capa.forward(X, entrenando=entrenando) * dZ_fija)
         parametro[idx] = original
         grad[idx] = (mas - menos) / (2 * eps)
     return grad
@@ -142,3 +148,46 @@ def test_capa_maxpool2d_gradiente():
     dX_analitico = capa.backward(dZ_fija, learning_rate=0.0)
 
     assert np.allclose(dX_num, dX_analitico, atol=ATOL)
+
+
+def test_capa_batchnorm_gradientes():
+    # entrenando=True en el sondeo numérico: el backward deriva la función de entrenamiento
+    # (normaliza con media/varianza del batch actual), no la de evaluación (medias
+    # acumuladas) -- hay que medir la misma función que se está derivando.
+    rng = np.random.default_rng(5)
+    X = rng.normal(size=(6, 4))
+    capa = CapaBatchNorm(dim=4)
+    dZ_fija = rng.normal(size=(6, 4))
+
+    dX_num = gradiente_numerico_entrada(capa, X.copy(), dZ_fija, entrenando=True)
+    dgamma_num = gradiente_numerico_parametro(capa, "gamma", X, dZ_fija, entrenando=True)
+    dbeta_num = gradiente_numerico_parametro(capa, "beta", X, dZ_fija, entrenando=True)
+
+    capa.forward(X, entrenando=True)
+    dX_analitico = capa.backward(dZ_fija, learning_rate=0.0)
+    dgamma_analitico = gradiente_analitico_parametro(capa, "gamma", X, dZ_fija)
+    dbeta_analitico = gradiente_analitico_parametro(capa, "beta", X, dZ_fija)
+
+    assert np.allclose(dX_num, dX_analitico, atol=ATOL)
+    assert np.allclose(dgamma_num, dgamma_analitico, atol=ATOL)
+    assert np.allclose(dbeta_num, dbeta_analitico, atol=ATOL)
+
+
+def test_capa_batchnorm2d_gradientes():
+    rng = np.random.default_rng(6)
+    X = rng.normal(size=(2, 3, 3, 2))
+    capa = CapaBatchNorm2D(canales=2)
+    dZ_fija = rng.normal(size=(2, 3, 3, 2))
+
+    dX_num = gradiente_numerico_entrada(capa, X.copy(), dZ_fija, entrenando=True)
+    dgamma_num = gradiente_numerico_parametro(capa, "gamma", X, dZ_fija, entrenando=True)
+    dbeta_num = gradiente_numerico_parametro(capa, "beta", X, dZ_fija, entrenando=True)
+
+    capa.forward(X, entrenando=True)
+    dX_analitico = capa.backward(dZ_fija, learning_rate=0.0)
+    dgamma_analitico = gradiente_analitico_parametro(capa, "gamma", X, dZ_fija)
+    dbeta_analitico = gradiente_analitico_parametro(capa, "beta", X, dZ_fija)
+
+    assert np.allclose(dX_num, dX_analitico, atol=ATOL)
+    assert np.allclose(dgamma_num, dgamma_analitico, atol=ATOL)
+    assert np.allclose(dbeta_num, dbeta_analitico, atol=ATOL)
