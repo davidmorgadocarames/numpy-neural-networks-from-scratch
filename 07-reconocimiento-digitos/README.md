@@ -303,6 +303,29 @@ No es un truco académico aislado: es la vulnerabilidad estándar que cualquier 
 artificial en producción tiene que tener en cuenta antes de confiar en él para una decisión
 automática.
 
+## PGD: la versión iterativa de FGSM
+
+FGSM da un único paso grande en la dirección del signo del gradiente. PGD (Projected Gradient
+Descent, [Madry et al.,
+2017](https://arxiv.org/abs/1706.06083)) da varios pasos pequeños, y tras cada uno **proyecta**
+la imagen de vuelta dentro de la bola de radio epsilon alrededor del original -- de ahí el
+nombre. Reutiliza `gradiente_respecto_a_entrada()` de `fgsm.py` sin duplicarlo -- 10 pasos,
+tamaño de paso `epsilon/4` (regla práctica de Madry et al.) -- [`pgd.py`](pgd.py).
+
+| Epsilon | 0.00 | 0.02 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| Accuracy (FGSM) | 97.34% | 89.37% | 48.20% | 7.30% | 0.63% | 0.01% | 0.00% |
+| Accuracy (PGD) | 97.34% | 88.74% | 41.12% | **3.67%** | **0.14%** | 0.00% | 0.00% |
+
+![FGSM vs PGD](results_pgd/fgsm_vs_pgd.png)
+
+PGD es igual o más dañino que FGSM en todos los epsilon (nunca al revés, como cabía esperar --
+más pasos con proyección solo puede explorar mejor la bola de perturbaciones permitidas, no
+peor) -- en ε=0.1, casi la mitad de accuracy respecto a FGSM con el mismo presupuesto de
+perturbación (3.67% frente a 7.30%). Es la referencia estándar en la literatura para medir
+robustez adversaria precisamente porque explota el gradiente de forma más completa que un
+único paso.
+
 ## Reproducir
 
 ```bash
@@ -314,6 +337,7 @@ python sgd_vs_adam_full.py        # comparación SGD vs Adam, mini-batch (~1-2 m
 python lr_decay.py                # LR decay vs LR constante (~1 min)
 python batchnorm.py               # BatchNorm vs sin BatchNorm (~1 min)
 python fgsm.py                    # FGSM: accuracy vs epsilon (~1 min)
+python pgd.py                     # PGD: accuracy vs epsilon (~1-2 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py

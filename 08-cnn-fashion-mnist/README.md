@@ -478,6 +478,33 @@ que acierta:
 
 ![Ejemplos FGSM](results_fgsm/ejemplos_fgsm.png)
 
+## PGD: la versión iterativa de FGSM, y una corrección importante a la sección anterior
+
+Misma idea que en [`07-reconocimiento-digitos`](../07-reconocimiento-digitos/) (ver su README
+para la explicación completa de PGD): varios pasos pequeños con proyección a la bola de radio
+epsilon, en vez de un único paso grande. Reutiliza `gradiente_respecto_a_entrada()` de
+`fgsm.py` -- [`pgd.py`](pgd.py).
+
+| Epsilon | 0.00 | 0.02 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| Accuracy (FGSM) | 89.88% | 67.13% | 44.12% | 24.06% | 14.11% | 9.18% | 7.28% |
+| Accuracy (PGD) | 89.88% | 53.68% | 15.44% | **1.03%** | **0.07%** | 0.01% | 0.00% |
+
+![FGSM vs PGD](results_pgd/fgsm_vs_pgd.png)
+
+**Esto obliga a matizar la conclusión de la sección anterior.** Ahí se leía la caída más suave
+de la CNN frente a FGSM (24.06% en ε=0.1, frente al 7.30% de la red densa de 07) como que la
+convolución era "algo más robusta" ante una perturbación uniforme por píxel. Con PGD esa
+diferencia prácticamente desaparece: 1.03% en ε=0.1, muy cerca del colapso que ya se veía en
+07 (3.67% con PGD). La lectura correcta no es que la CNN sea más robusta -- es que **FGSM, con
+un único paso, no encontraba la dirección de ataque real** en esta red concreta (un fenómeno
+conocido en la literatura como *gradient masking*: el gradiente en un solo punto apunta en una
+dirección que no representa bien el paisaje de pérdida más allá de ese punto). PGD, al dar
+varios pasos y corregir la dirección en cada uno, sí la encuentra. Es la razón por la que PGD,
+no FGSM, es la referencia estándar para medir robustez adversaria real -- un modelo que
+"aguanta" FGSM pero no PGD no es robusto, solo tiene un gradiente engañoso en el punto de
+partida.
+
 ## Reproducir
 
 ```bash
@@ -489,6 +516,7 @@ python sgd_vs_adam_full.py         # SGD vs Adam, mini-batch (~13 min: 6 combina
 python lr_decay.py                 # LR decay vs LR constante (~4 min)
 python batchnorm.py                # BatchNorm vs sin BatchNorm (~3 min)
 python fgsm.py                     # FGSM: accuracy vs epsilon (~5-6 min)
+python pgd.py                      # PGD: accuracy vs epsilon (~10-11 min)
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
 python ../run_seed_sweep_esquemaB.py --solo 08-fullbatch-sgd-vs-adam --n 20
