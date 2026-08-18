@@ -355,6 +355,30 @@ adversaria (la red dedica parte de su capacidad a ser robusta en vez de exprimir
 el caso sin ataque). A partir de ε≈0.2 la defensa también empieza a fallar -- entrenar contra
 un radio de perturbación no protege indefinidamente contra radios mucho mayores.
 
+## Mapas de saliencia: el mismo gradiente, usado para mirar en vez de para atacar
+
+`gradiente_respecto_a_entrada()` (la función que ya usan FGSM y PGD) es el gradiente de la
+pérdida respecto a cada píxel de la imagen. FGSM usa su **signo** para atacar; un mapa de
+saliencia usa su **magnitud** (`|dL/dX|`) para visualizar: los píxeles con gradiente grande son
+los que más influyen en la decisión de la red, sin perturbar nada --
+[`mapas_saliencia.py`](mapas_saliencia.py). Es el equivalente para una red densa (sin
+estructura espacial interna) de lo que Grad-CAM hace en la CNN de
+[`08-cnn-fashion-mnist`](../08-cnn-fashion-mnist/), que sí necesita un mapa de activaciones
+convolucional -- aquí no existe, así que la única "estructura" disponible es el píxel suelto.
+
+![Mapas de saliencia](results_saliencia/mapas_saliencia.png)
+
+**Resultado honesto**: los mapas salen bastante ruidosos -- no dibujan con nitidez el contorno
+del dígito. Es un fenómeno conocido en la literatura, no un fallo de esta implementación
+concreta: el gradiente "vanilla" (sin suavizar) es ruidoso porque cada píxel de entrada tiene
+su propio peso independiente en la primera capa densa, sin ningún filtro compartido entre
+píxeles vecinos que fuerce coherencia espacial -- a diferencia de una convolución, donde el
+mismo filtro se aplica a toda la imagen y el mapa resultante ya sale suavizado por
+construcción. Variantes como SmoothGrad (promediar el gradiente sobre varias copias de la
+imagen con ruido añadido) o Integrated Gradients existen precisamente para corregir este
+ruido; no se han implementado aquí por mantener el alcance acotado al gradiente que ya se
+tiene disponible de FGSM/PGD.
+
 ## Reproducir
 
 ```bash
@@ -368,6 +392,7 @@ python batchnorm.py               # BatchNorm vs sin BatchNorm (~1 min)
 python fgsm.py                    # FGSM: accuracy vs epsilon (~1 min)
 python pgd.py                     # PGD: accuracy vs epsilon (~1-2 min)
 python entrenamiento_adversario.py # entrenamiento adversario (~3-4 min)
+python mapas_saliencia.py         # mapas de saliencia (~1 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
