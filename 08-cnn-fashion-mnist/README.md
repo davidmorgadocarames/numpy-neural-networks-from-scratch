@@ -533,6 +533,32 @@ dónde deja de proteger la defensa: contra PGD, la accuracy se mantiene bien has
 radio con el que se entrenó) y después cae de forma abrupta -- la defensa generaliza a
 perturbaciones parecidas a las vistas en entrenamiento, no a cualquier radio.
 
+## Grad-CAM: dónde mira la red, no solo qué píxel suelto
+
+Los mapas de saliencia de [`07-reconocimiento-digitos`](../07-reconocimiento-digitos/) usan el
+gradiente respecto a los **píxeles de entrada**, y salen ruidosos porque cada píxel tiene su
+propio peso independiente. Grad-CAM ([Selvaraju et al.,
+2017](https://arxiv.org/abs/1610.02391)) usa en cambio el gradiente respecto al **último mapa
+de activaciones convolucional** (salida de la 2ª `CapaConv2D` tras su LeakyReLU, 11×11×16,
+justo antes del 2º `MaxPool2D`): cada canal de ese mapa ya es la respuesta de un filtro
+aprendido a una zona de la imagen, así que el resultado sale mucho menos ruidoso -- regiones
+coherentes, no píxeles sueltos. Mecánicamente, en vez de retropropagar hasta la entrada (como
+FGSM/PGD/saliencia), se para justo después de esa capa y se captura el gradiente que llegaría
+ahí -- [`grad_cam.py`](grad_cam.py), no toca `sgd_vs_adam_full.py`.
+
+![Grad-CAM](results_grad_cam/grad_cam.png)
+
+Comparado con los mapas de saliencia de 07, la mejora en coherencia espacial es clara -- zonas
+de calor de varios píxeles conectados, no ruido disperso por toda la imagen, resultado directo
+de que el mapa de activaciones ya tiene estructura de filtro convolucional detrás. Pero no es
+perfecto: en varios ejemplos (sandalia, bolso, jersey) buena parte de la activación cae en los
+**bordes de la imagen** en vez de centrarse claramente en la prenda -- con un mapa de solo
+11×11 antes de reescalar a 28×28, la resolución espacial es baja, y el padding "válido" de las
+convoluciones (sin relleno) hace que las zonas de borde acumulen menos contexto que el centro,
+lo que puede sesgar dónde cae la activación. Un mapa más fino exigiría usar una capa
+convolucional más temprana (menos filtrada, pero con más resolución) o una arquitectura con
+más capas convolucionales antes del primer pooling.
+
 ## Reproducir
 
 ```bash
@@ -546,6 +572,7 @@ python batchnorm.py                # BatchNorm vs sin BatchNorm (~3 min)
 python fgsm.py                     # FGSM: accuracy vs epsilon (~5-6 min)
 python pgd.py                      # PGD: accuracy vs epsilon (~10-11 min)
 python entrenamiento_adversario.py # entrenamiento adversario (~15-20 min)
+python grad_cam.py                 # Grad-CAM (~4-5 min)
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
 python ../run_seed_sweep_esquemaB.py --solo 08-fullbatch-sgd-vs-adam --n 20
