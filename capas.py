@@ -45,6 +45,15 @@ class OptimizadorAdam:
         self.t = 0
 
     def actualizar(self, W, b, dW, db, learning_rate):
+        # learning_rate == 0 significa "quiero el gradiente pero no quiero aprender de él" --
+        # el mismo truco que ya usa tests/test_gradients.py para extraer dW/db/dX_anterior sin
+        # mover pesos, y que ahora también usan fgsm.py/pgd.py para craftear ejemplos
+        # adversarios con los pesos actuales. Con SGD eso ya era un no-op (W - 0*dW = W), pero
+        # aquí hacía falta cortarlo explícitamente: sin este return, cada crafteo seguiría
+        # incrementando self.t y mezclando el gradiente de ataque en las medias móviles m/v,
+        # contaminando el momentum del entrenamiento real aunque los pesos no se movieran.
+        if learning_rate == 0.0:
+            return W, b
         if self.mW is None:
             self.mW, self.vW = np.zeros_like(W), np.zeros_like(W)
             self.mb, self.vb = np.zeros_like(b), np.zeros_like(b)

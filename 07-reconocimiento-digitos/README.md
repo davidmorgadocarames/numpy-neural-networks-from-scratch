@@ -326,6 +326,35 @@ perturbación (3.67% frente a 7.30%). Es la referencia estándar en la literatur
 robustez adversaria precisamente porque explota el gradiente de forma más completa que un
 único paso.
 
+## Entrenamiento adversario: la defensa
+
+Si la red solo ve imágenes limpias durante el entrenamiento, nunca aprende a lidiar con las
+perturbadas. Cada paso de entrenamiento fabrica primero un ejemplo FGSM con los pesos
+**actuales** de ese momento del entrenamiento (ε=0.1) y entrena sobre ese ejemplo en vez de
+sobre la imagen limpia. Se craftea con FGSM y no con PGD por coste -- PGD necesita 10 pasadas
+de gradiente extra por batch, lo que dispararía el tiempo de entrenar (~11x en vez de ~2x); es
+una decisión consciente de coste, no una limitación del método --
+[`entrenamiento_adversario.py`](entrenamiento_adversario.py).
+
+| Epsilon | 0.00 | 0.02 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| FGSM, sin defensa | 97.34% | 89.37% | 48.20% | 7.30% | 0.63% | 0.01% | 0.00% |
+| FGSM, con defensa | 95.53% | 94.11% | 90.83% | **82.54%** | 67.71% | 44.69% | 7.47% |
+| PGD, sin defensa | 97.34% | 88.74% | 41.12% | 3.67% | 0.14% | 0.00% | 0.00% |
+| PGD, con defensa | 95.53% | 94.06% | 90.56% | **80.26%** | 58.78% | 26.02% | 0.99% |
+
+![Defensa frente a FGSM](results_entrenamiento_adversario/defensa_vs_fgsm.png)
+
+![Defensa frente a PGD](results_entrenamiento_adversario/defensa_vs_pgd.png)
+
+En ε=0.1, la accuracy bajo ataque pasa de 7.30% a 82.54% frente a FGSM, y de un colapso casi
+total (3.67%) a 80.26% frente a PGD -- una recuperación grande incluso contra el ataque más
+fuerte, con el que nunca se entrenó (solo se entrenó contra FGSM). El coste: la accuracy en
+datos limpios baja de 97.34% a 95.53% -- 1.81 puntos, el precio habitual de la robustez
+adversaria (la red dedica parte de su capacidad a ser robusta en vez de exprimir el máximo en
+el caso sin ataque). A partir de ε≈0.2 la defensa también empieza a fallar -- entrenar contra
+un radio de perturbación no protege indefinidamente contra radios mucho mayores.
+
 ## Reproducir
 
 ```bash
@@ -338,6 +367,7 @@ python lr_decay.py                # LR decay vs LR constante (~1 min)
 python batchnorm.py               # BatchNorm vs sin BatchNorm (~1 min)
 python fgsm.py                    # FGSM: accuracy vs epsilon (~1 min)
 python pgd.py                     # PGD: accuracy vs epsilon (~1-2 min)
+python entrenamiento_adversario.py # entrenamiento adversario (~3-4 min)
 python demo_gradio.py             # demo interactiva, requiere haber ejecutado antes digit_classifier.py
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py

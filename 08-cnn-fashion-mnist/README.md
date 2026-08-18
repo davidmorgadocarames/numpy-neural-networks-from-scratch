@@ -505,6 +505,34 @@ no FGSM, es la referencia estándar para medir robustez adversaria real -- un mo
 "aguanta" FGSM pero no PGD no es robusto, solo tiene un gradiente engañoso en el punto de
 partida.
 
+## Entrenamiento adversario: la defensa
+
+Misma idea que en [`07-reconocimiento-digitos`](../07-reconocimiento-digitos/) (ver su README
+para la explicación completa): cada batch se craftea con FGSM (ε=0.1, con los pesos actuales
+de ese momento del entrenamiento) antes de entrenar sobre él, en vez de sobre la imagen
+limpia. Variante `baseline` de la configuración de referencia --
+[`entrenamiento_adversario.py`](entrenamiento_adversario.py).
+
+| Epsilon | 0.00 | 0.02 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
+|---|---|---|---|---|---|---|---|
+| FGSM, sin defensa | 89.88% | 67.13% | 44.12% | 24.06% | 14.11% | 9.18% | 7.28% |
+| FGSM, con defensa | 83.58% | 81.38% | 79.24% | **76.04%** | 53.43% | 32.59% | 17.81% |
+| PGD, sin defensa | 89.88% | 53.68% | 15.44% | 1.03% | 0.07% | 0.01% | 0.00% |
+| PGD, con defensa | 83.58% | 80.25% | 75.42% | **65.22%** | 13.13% | 1.18% | 0.18% |
+
+![Defensa frente a FGSM](results_entrenamiento_adversario/defensa_vs_fgsm.png)
+
+![Defensa frente a PGD](results_entrenamiento_adversario/defensa_vs_pgd.png)
+
+En ε=0.1, la recuperación es aún mayor que en 07 en términos relativos: FGSM pasa de 24.06% a
+76.04%, y PGD -- el ataque que en la sección anterior colapsaba la red sin defensa a un 1.03%
+casi total -- sube a 65.22%. El coste en datos limpios es mayor que en 07: 89.88% → 83.58%
+(6.30 puntos, frente a 1.81 en la red densa) -- entrenar una CNN para que sea robusta cuesta
+más capacidad de la que le sobra que a una red densa más simple. También se ve con claridad
+dónde deja de proteger la defensa: contra PGD, la accuracy se mantiene bien hasta ε≈0.1 (el
+radio con el que se entrenó) y después cae de forma abrupta -- la defensa generaliza a
+perturbaciones parecidas a las vistas en entrenamiento, no a cualquier radio.
+
 ## Reproducir
 
 ```bash
@@ -517,6 +545,7 @@ python lr_decay.py                 # LR decay vs LR constante (~4 min)
 python batchnorm.py                # BatchNorm vs sin BatchNorm (~3 min)
 python fgsm.py                     # FGSM: accuracy vs epsilon (~5-6 min)
 python pgd.py                      # PGD: accuracy vs epsilon (~10-11 min)
+python entrenamiento_adversario.py # entrenamiento adversario (~15-20 min)
 
 # Esquema B (split fijo) -- ver ../run_seed_sweep_esquemaB.py
 python ../run_seed_sweep_esquemaB.py --solo 08-fullbatch-sgd-vs-adam --n 20
