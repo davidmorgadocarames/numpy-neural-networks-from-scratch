@@ -105,6 +105,32 @@ sigue por detrás del baseline (ver README del proyecto para el análisis comple
 
 ![Matriz de confusión — baseline](08-cnn-fashion-mnist/results/confusion_matrix_baseline.png)
 
+## Más allá de los 8 proyectos
+
+Sobre 07 y 08 (siempre con Adam, mini-batch, sin tocar los scripts ya documentados arriba --
+ver "SGD vs Adam" en cada README para la configuración de referencia) se han añadido, cada uno
+verificado con resultados reales, no solo escrito:
+
+- **Learning rate decay** y **BatchNorm** (`CapaBatchNorm`/`CapaBatchNorm2D`, nuevas en
+  `capas.py`/`capas_cnn.py`, verificadas por diferencias finitas).
+- **FGSM** y **PGD**: el `dX_anterior` que la primera capa ya calculaba y descartaba en cada
+  `backward()` es el gradiente de la pérdida respecto a los píxeles de entrada -- usado a
+  propósito para atacar en vez de tirarlo. Colapsa la accuracy de 97% a menos del 8% con una
+  perturbación casi imperceptible.
+- **Entrenamiento adversario**: la defensa -- recupera la mayor parte de esa accuracy perdida,
+  a cambio de un pequeño coste en datos limpios.
+- **Grad-CAM** (08) y **mapas de saliencia** (07): el mismo gradiente, usado para visualizar
+  en vez de para atacar.
+
+Ver las secciones correspondientes en el README de
+[`07-reconocimiento-digitos`](07-reconocimiento-digitos/) y
+[`08-cnn-fashion-mnist`](08-cnn-fashion-mnist/) para el detalle completo de cada una.
+
+Aparte, [`autograd-desde-cero/`](autograd-desde-cero/) es un proyecto pequeño e independiente
+(no toca 07/08): un motor de diferenciación automática en modo inverso, que construye un grafo
+de operaciones sobre la marcha en vez de derivar cada capa a mano -- verificado contra el mismo
+criterio de diferencias finitas, entrenando una red de juguete hasta resolver XOR.
+
 ## El mini-framework — `capas.py`
 
 Las clases `CapaDensa`, `ActivacionLeakyReLU`, `ActivacionSigmoide` y `ActivacionSoftmax` se
