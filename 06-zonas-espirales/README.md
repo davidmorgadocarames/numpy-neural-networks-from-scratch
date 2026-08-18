@@ -177,10 +177,40 @@ canónica, con matrices de confusión y zonas aprendidas por variante en la mism
 [`results_sgd_vs_adam/metrics_seed_sweep.json`](results_sgd_vs_adam/metrics_seed_sweep.json)
 (las 20 repeticiones).
 
+## Validación cruzada (k-fold): otra forma de medir robustez
+
+"Robustez frente a la semilla" (arriba) mide qué tan estable es el resultado repitiendo el
+mismo split 60/20/20 con particiones distintas al azar. K-fold es una alternativa
+**estructurada**, no aleatoria: reparte los 450 puntos en 5 pliegues iguales y cada uno hace de
+test exactamente una vez, aprovechando el dataset entero para evaluar en vez de solo una
+fracción fija por repetición -- con un dataset tan pequeño (450 puntos), tiene sentido no
+desperdiciar ninguno. Dentro de cada pliegue se respeta la misma regla del resto del repo (test
+tocado una sola vez): el 80% restante se reparte en train/validación para decidir el early
+stopping, y el pliegue de test se evalúa ya con la red congelada -- ver
+[`k_fold.py`](k_fold.py) para el detalle. 4 vueltas completas a los 5 pliegues (20
+entrenamientos, mismo N que el barrido de semillas), con SGD para comparar en igualdad de
+condiciones con esa sección.
+
+| Método | Media | Desv. típica | N |
+|---|---|---|---|
+| Barrido de semillas (split 60/20/20 aleatorio) | 98.06% | 1.34% | 20 |
+| K-fold (5 pliegues × 4 repeticiones) | **98.50%** | 1.54% | 20 |
+
+![k-fold vs. barrido de semillas](results_k_fold/k_fold_vs_seed_sweep.png)
+
+Las dos metodologías coinciden razonablemente bien (medias a 0.44 puntos, desviaciones típicas
+del mismo orden) -- es el resultado que cabía esperar: en un problema ya estable frente a la
+semilla (ver más arriba), no hay motivo para que cambiar de metodología de muestreo mueva mucho
+el número. El valor de k-fold no está en dar un resultado distinto aquí, sino en la garantía
+metodológica que ofrece con datasets pequeños: cada punto participa en el test exactamente una
+vez, así que la estimación agregada no depende de qué fracción concreta cayó de un lado u otro
+en una única partición aleatoria.
+
 ## Reproducir
 
 ```bash
 pip install -r ../requirements.txt
 python spiral_classifier.py
 python sgd_vs_adam.py          # comparación SGD vs Adam
+python k_fold.py               # validación cruzada k-fold (~30s)
 ```
